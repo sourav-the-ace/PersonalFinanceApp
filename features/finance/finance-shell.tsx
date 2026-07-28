@@ -1,0 +1,583 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { buildDashboardSummary } from "@/features/finance/data";
+import { emptyTransactionForm, createTransactionFromForm } from "@/features/finance/finance-forms";
+import { downloadTransactionsCsv } from "@/features/finance/export";
+import { EmptyState } from "@/features/finance/empty-state";
+import { createAccount, createCategory, fetchAccounts, fetchCategories } from "@/features/finance/finance-crud";
+import { createFinanceTransaction, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
+import {
+  createDefaultFinanceState,
+  filterTransactionsBySearch,
+  loadPersistedFinanceState,
+  savePersistedFinanceState,
+  syncFinanceStateToSupabase,
+} from "@/features/finance/finance-service";
+import type { Account, Category, Transaction, TransactionType } from "@/types/finance";
+import { formatCurrency } from "@/utils/format";
+
+const palette = ["#0f172a", "#2563eb", "#7c3aed", "#14b8a6", "#f59e0b"];
+
+export function FinanceShell() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [view, setView] = useState<"dashboard" | "transactions" | "accounts" | "categories" | "reports" | "settings">("dashboard");
+  const [search, setSearch] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [darkMode, setDarkMode] = useState(false);
+  const [accountForm, setAccountForm] = useState({ name: "", type: "Bank", balance: 0 });
+  const [categoryForm, setCategoryForm] = useState({ name: "", type: "expense" as TransactionType });
+  const [typeFilter, setTypeFilter] = useState<TransactionType | "all">("all");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [form, setForm] = useState(emptyTransactionForm);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    const persistedState = loadPersistedFinanceState();
+    const nextState = persistedState ?? createDefaultFinanceState();
+    setTransactions(nextState.transactions);
+    setAccounts(nextState.accounts);
+    setCategories(nextState.categories);
+    setIsHydrated(true);
+
+    void fetchFinanceData().then((response) => {
+      if (response.transactions.length > 0 || response.accounts.length > 0 || response.categories.length > 0) {
+        setTransactions(response.transactions);
+        setAccounts(response.accounts);
+        setCategories(response.categories);
+      }
+    });
+
+    void fetchAccounts().then((nextAccounts) => {
+      if (nextAccounts.length > 0) {
+        setAccounts(nextAccounts);
+      }
+    });
+
+    void fetchCategories().then((nextCategories) => {
+      if (nextCategories.length > 0) {
+        setCategories(nextCategories);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const nextState = { transactions, accounts, categories };
+    savePersistedFinanceState(nextState);
+    void syncFinanceStateToSupabase(nextState);
+  }, [accounts, categories, isHydrated, transactions]);
+
+  const summary = useMemo(() => buildDashboardSummary(transactions, accounts, selectedMonth), [transactions, accounts, selectedMonth]);
+  const filteredTransactions = useMemo(() => {
+    return filterTransactionsBySearch(transactions, search, typeFilter);
+  }, [transactions, search, typeFilter]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const selectedCategory = categories.find((item) => item.id === form.categoryId);
+    const selectedAccount = accounts.find((item) => item.id === form.accountId);
+    const transactionDraft = createTransactionFromForm(
+      form,
+      selectedCategory?.name ?? form.category,
+      selectedAccount?.name ?? form.account,
+    );
+    const next = { ...transactionDraft, id: editingTransactionId ?? transactionDraft.id };
+
+    if (editingTransactionId) {
+      try {
+        const updated = await updateFinanceTransaction({
+          ...next,
+          categoryId: form.categoryId || undefined,
+          accountId: form.accountId || undefined,
+        });
+        setTransactions((current) => current.map((item) => (item.id === editingTransactionId ? {
+          ...item,
+          ...updated,
+          category: updated.category ?? item.category,
+          account: updated.account ?? item.account,
+        } : item)));
+      } catch {
+        // Keep the local fallback behavior if the API is unavailable.
+      }
+    } else {
+      setTransactions((current) => [next, ...current]);
+      try {
+        await createFinanceTransaction({
+          ...next,
+          categoryId: form.categoryId || undefined,
+          accountId: form.accountId || undefined,
+        });
+      } catch {
+        // Keep the local fallback behavior if the API is unavailable.
+      }
+    }
+
+    setEditingTransactionId(null);
+    setForm({ ...emptyTransactionForm, date: new Date().toISOString().slice(0, 10) });
+  };
+
+  const removeTransaction = async (id: string) => {
+    setTransactions((current) => current.filter((item) => item.id !== id));
+    try {
+      await deleteFinanceTransaction(id);
+    } catch {
+      // Keep the local fallback behavior if the API is unavailable.
+    }
+  };
+
+  const startEditingTransaction = (transaction: Transaction) => {
+    setEditingTransactionId(transaction.id);
+    setForm({
+      title: transaction.title,
+      amount: transaction.amount,
+      type: transaction.type,
+      category: transaction.category,
+      account: transaction.account,
+      date: transaction.date,
+      notes: transaction.notes ?? "",
+      categoryId: categories.find((item) => item.name === transaction.category)?.id ?? "",
+      accountId: accounts.find((item) => item.name === transaction.account)?.id ?? "",
+    });
+  };
+
+  const cancelEditingTransaction = () => {
+    setEditingTransactionId(null);
+    setForm({ ...emptyTransactionForm, date: new Date().toISOString().slice(0, 10) });
+  };
+
+  const handleCreateAccount = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextAccount = await createAccount({
+      name: accountForm.name,
+      type: accountForm.type,
+      balance: accountForm.balance,
+    });
+    setAccounts((current) => [...current, nextAccount]);
+    setAccountForm({ name: "", type: "Bank", balance: 0 });
+  };
+
+  const handleCreateCategory = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextCategory = await createCategory({
+      name: categoryForm.name,
+      type: categoryForm.type,
+    });
+    setCategories((current) => [...current, nextCategory]);
+    setCategoryForm({ name: "", type: "expense" });
+  };
+
+  const renderDashboard = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 rounded-[24px] border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm text-[#7c9189]">Monthly view</p>
+          <p className="text-lg font-semibold">Income and expenses for {selectedMonth}</p>
+        </div>
+        <Input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} className="max-w-[220px]" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Total Balance", value: formatCurrency(summary.totalBalance), icon: Landmark },
+          { label: "Monthly Income", value: formatCurrency(summary.monthlyIncome), icon: Wallet },
+          { label: "Monthly Expenses", value: formatCurrency(summary.monthlyExpenses), icon: CreditCard },
+          { label: "Savings Rate", value: `${summary.savingsRate.toFixed(1)}%`, icon: PiggyBank },
+        ].map((item) => (
+          <Card key={item.label}>
+            <CardContent className="flex items-center justify-between py-5">
+              <div>
+                <p className="text-sm text-[#7c9189]">{item.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+              </div>
+              <div className="rounded-2xl bg-[#1b2b24] p-3">
+                <item.icon className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Income vs Expense</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={summary.incomeVsExpense}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                  <Bar dataKey="income" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="expense" fill="#0f172a" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Expense by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={summary.expenseByCategory} dataKey="value" nameKey="name" outerRadius={90}>
+                    {summary.expenseByCategory.map((entry, index) => (
+                      <Cell key={entry.name} fill={palette[index % palette.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        {transactions.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Recent Transactions</CardTitle>
+              <Button type="button" onClick={() => setView("transactions")} className="gap-2">
+                <Plus className="h-4 w-4" /> Manage
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {summary.recentTransactions.map((transaction) => (
+                  <div key={transaction.id} className="flex items-center justify-between rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+                    <div>
+                      <p className="font-medium">{transaction.title}</p>
+                      <p className="text-sm text-[#7c9189]">{transaction.category} • {transaction.date}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={transaction.type === "income" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
+                        {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount)}
+                      </p>
+                      <p className="text-sm text-[#7c9189]">{transaction.account}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Accounts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {accounts.map((account) => (
+              <div key={account.id} className="flex items-center justify-between rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+                <div>
+                  <p className="font-medium">{account.name}</p>
+                  <p className="text-sm text-[#7c9189]">{account.type}</p>
+                </div>
+                <p className="font-semibold">{formatCurrency(account.balance)}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+
+  const renderTransactions = () => (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <CardTitle>Transactions</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <label className="flex items-center gap-2 rounded-xl border border-[#2f463f] bg-[#101b18]/70 px-3 py-2">
+              <Search className="h-4 w-4 text-[#7c9189]" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search..."
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
+            </label>
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value as TransactionType | "all")}
+              className="rounded-xl border border-[#2f463f] bg-[#101b18] px-3 py-2 text-sm"
+            >
+              <option value="all">All types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expenses</option>
+            </select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-2 lg:grid-cols-4">
+            <Input placeholder="Title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
+            <Input type="number" placeholder="Amount" value={form.amount} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} required />
+            <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TransactionType })}>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </Select>
+            <Input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
+            <Select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value, category: categories.find((item) => item.id === event.target.value)?.name ?? "" })}>
+              <option value="">Select category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </Select>
+            <Select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value, account: accounts.find((item) => item.id === event.target.value)?.name ?? "" })}>
+              <option value="">Select account</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.name}</option>
+              ))}
+            </Select>
+            <Textarea placeholder="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="md:col-span-2 lg:col-span-3" />
+            <div className="flex gap-2 md:col-span-2 lg:col-span-1">
+              <Button type="submit" className="h-10 flex-1">{editingTransactionId ? "Save" : "Add transaction"}</Button>
+              {editingTransactionId ? (
+                <Button type="button" variant="outline" className="h-10" onClick={cancelEditingTransaction}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
+          </form>
+
+          <div className="space-y-3">
+            {filteredTransactions.map((transaction) => (
+              <div key={transaction.id} className="flex flex-col gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-medium">{transaction.title}</p>
+                  <p className="text-sm text-[#7c9189]">{transaction.category} • {transaction.account} • {transaction.date}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className={transaction.type === "income" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
+                    {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount)}
+                  </p>
+                  <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
+                    Edit
+                  </Button>
+                  <Button variant="ghost" type="button" onClick={() => removeTransaction(transaction.id)}>
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderAccounts = () => (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add account</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreateAccount} className="grid gap-3 md:grid-cols-3">
+            <Input placeholder="Name" value={accountForm.name} onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })} required />
+            <Input placeholder="Type" value={accountForm.type} onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })} required />
+            <Input type="number" placeholder="Balance" value={accountForm.balance} onChange={(event) => setAccountForm({ ...accountForm, balance: Number(event.target.value) })} required />
+            <Button type="submit" className="md:col-span-3">Create account</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <div className="grid gap-6 md:grid-cols-2">
+        {accounts.map((account) => (
+          <Card key={account.id}>
+            <CardHeader>
+              <CardTitle>{account.name}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-[#7c9189]">{account.type}</p>
+              <p className="text-2xl font-semibold">{formatCurrency(account.balance)}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderCategories = () => (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add category</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreateCategory} className="grid gap-3 md:grid-cols-3">
+            <Input placeholder="Name" value={categoryForm.name} onChange={(event) => setCategoryForm({ ...categoryForm, name: event.target.value })} required />
+            <Select value={categoryForm.type} onChange={(event) => setCategoryForm({ ...categoryForm, type: event.target.value as TransactionType })}>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </Select>
+            <Button type="submit">Create category</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <div className="grid gap-6 md:grid-cols-2">
+        {categories.map((category) => (
+          <Card key={category.id}>
+            <CardHeader>
+              <CardTitle>{category.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="inline-flex rounded-full bg-[#1b2b24] px-3 py-1 text-sm">
+                {category.type}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderReports = () => (
+    <div className="grid gap-6 xl:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-2xl bg-[#1b2b24] p-4">
+            <p className="text-sm text-[#7c9189]">Net savings</p>
+            <p className="mt-1 text-2xl font-semibold">{formatCurrency(summary.monthlyIncome - summary.monthlyExpenses)}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+              <p className="text-sm text-[#7c9189]">Income</p>
+              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyIncome)}</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+              <p className="text-sm text-[#7c9189]">Expenses</p>
+              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyExpenses)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Category Spending</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {summary.expenseByCategory.map((entry) => (
+              <div key={entry.name} className="flex items-center justify-between rounded-xl bg-[#1b2b24] p-3">
+                <span>{entry.name}</span>
+                <span className="font-semibold">{formatCurrency(entry.value)}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Trend Snapshot</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-sm text-zinc-500">Tracked entries</p>
+            <p className="mt-2 text-3xl font-semibold">{transactions.length}</p>
+            <p className="mt-2 text-sm text-[#7c9189]">Your current cash flow remains healthy with {summary.savingsRate.toFixed(1)}% savings rate.</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderSettings = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Settings</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm text-[#dce5e1]">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="font-medium text-white">Currency</span>
+            <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+            </Select>
+          </label>
+          <label className="space-y-2">
+            <span className="font-medium text-white">Dark mode</span>
+            <div className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+              <Switch checked={darkMode} onChange={(event) => setDarkMode(event.target.checked)} />
+              <span>{darkMode ? "Enabled" : "Disabled"}</span>
+            </div>
+          </label>
+        </div>
+        <Button type="button" onClick={() => downloadTransactionsCsv(transactions)}>
+          Export transactions as CSV
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.15),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(20,184,166,0.15),_transparent_30%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <header className="flex flex-col gap-4 rounded-[32px] border border-[#2f463f] bg-[#101b18]/90 p-6 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.25em] text-[#7c9189]">Personal Finance</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">The Ace Finance Hub</h1>
+            <p className="mt-2 max-w-2xl text-sm text-[#dce5e1]">
+              A modern, scalable command center for tracking balances, transactions, categories, and reporting.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ["dashboard", "Overview"],
+              ["transactions", "Transactions"],
+              ["accounts", "Accounts"],
+              ["categories", "Categories"],
+              ["reports", "Reports"],
+              ["settings", "Settings"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setView(key as typeof view)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${view === key ? "bg-[#3fe0a5] text-[#101b18]" : "bg-[#1b2b24] text-white hover:bg-[#22332d]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </header>
+
+        <main>
+          {view === "dashboard" && renderDashboard()}
+          {view === "transactions" && renderTransactions()}
+          {view === "accounts" && renderAccounts()}
+          {view === "categories" && renderCategories()}
+          {view === "reports" && renderReports()}
+          {view === "settings" && renderSettings()}
+        </main>
+      </div>
+    </div>
+  );
+}

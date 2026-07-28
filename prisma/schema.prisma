@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  currency  String   @default("USD")
+  theme     String   @default("light")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts      Account[]
+  categories    Category[]
+  transactions  Transaction[]
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  profileId String
+  name      String
+  type      String
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  profileId String
+  name      String
+  type      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id         String   @id @default(cuid())
+  profileId  String
+  title      String
+  amount     Float
+  type       String
+  categoryId String?
+  accountId  String?
+  date       String
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  profile  Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+  account  Account?  @relation(fields: [accountId], references: [id])
+}
