@@ -1,4 +1,4 @@
-import type { Account, Category, DashboardSummary, Transaction, TransactionType } from "@/types/finance";
+import type { Account, Category, DashboardSummary, Investment, Loan, Transaction, TransactionType } from "@/types/finance";
 
 export const initialTransactions: Transaction[] = [
   {
@@ -92,17 +92,19 @@ export function buildDashboardSummary(
   transactions: Transaction[],
   accounts: Account[],
   selectedMonth?: string,
+  loans: Loan[] = [],
+  investments: Investment[] = [],
 ): DashboardSummary {
   const filteredTransactions = selectedMonth
     ? transactions.filter((item) => item.date.startsWith(selectedMonth))
     : transactions;
 
   const monthlyIncome = filteredTransactions
-    .filter((item) => item.type === "income")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .filter((item) => item.type === "income" || item.type === "loan_receive_repayment")
+    .reduce((sum, item) => sum + (item.type === "loan_receive_repayment" ? (item.interestAmount ?? 0) : item.amount), 0);
   const monthlyExpenses = filteredTransactions
-    .filter((item) => item.type === "expense")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .filter((item) => item.type === "expense" || item.type === "loan_repayment")
+    .reduce((sum, item) => sum + (item.type === "loan_repayment" ? (item.interestAmount ?? 0) : item.amount), 0);
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
   const savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0;
 
@@ -126,6 +128,13 @@ export function buildDashboardSummary(
     { month: "Jun", income: 6400, expense: 3500 },
   ];
 
+  const outstandingBorrowed = loans.filter((loan) => loan.direction === "borrowed").reduce((sum, loan) => sum + loan.outstanding, 0);
+  const outstandingLent = loans.filter((loan) => loan.direction === "lent").reduce((sum, loan) => sum + loan.outstanding, 0);
+  const openLoansCount = loans.filter((loan) => loan.status === "open").length;
+  const closedLoansCount = loans.filter((loan) => loan.status === "closed").length;
+  const netInvested = investments.reduce((sum, investment) => sum + investment.netInvested, 0);
+  const realizedPnL = investments.reduce((sum, investment) => sum + investment.realizedPnL, 0);
+
   return {
     totalBalance,
     monthlyIncome,
@@ -136,5 +145,11 @@ export function buildDashboardSummary(
       ? [{ month: selectedMonth, income: monthlyIncome, expense: monthlyExpenses }]
       : incomeVsExpense,
     expenseByCategory,
+    outstandingBorrowed,
+    outstandingLent,
+    openLoansCount,
+    closedLoansCount,
+    netInvested,
+    realizedPnL,
   };
 }

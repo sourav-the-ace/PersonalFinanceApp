@@ -19,6 +19,8 @@ model Profile {
   accounts      Account[]
   categories    Category[]
   transactions  Transaction[]
+  loans         Loan[]
+  investments   Investment[]
 }
 
 model Account {
@@ -46,20 +48,56 @@ model Category {
   transactions Transaction[]
 }
 
-model Transaction {
-  id         String   @id @default(cuid())
-  profileId  String
-  title      String
-  amount     Float
-  type       String
-  categoryId String?
-  accountId  String?
-  date       String
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model Loan {
+  id           String   @id @default(cuid())
+  profileId    String
+  title        String
+  direction    String
+  counterparty String?
+  status       String   @default("open")
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  profile  Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  category Category? @relation(fields: [categoryId], references: [id])
-  account  Account?  @relation(fields: [accountId], references: [id])
+  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Investment {
+  id          String   @id @default(cuid())
+  profileId   String
+  name        String
+  assetType   String
+  institution String?
+  status      String   @default("open")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  profileId       String
+  title           String
+  amount          Float
+  type            String
+  categoryId      String?
+  accountId       String?
+  loanId          String?
+  investmentId    String?
+  principalAmount Float?
+  interestAmount  Float?
+  date            String
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile     Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  account     Account?     @relation(fields: [accountId], references: [id])
+  loan        Loan?        @relation(fields: [loanId], references: [id])
+  investment  Investment?  @relation(fields: [investmentId], references: [id])
 }

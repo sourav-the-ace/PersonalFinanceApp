@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
+import { BriefcaseBusiness, CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,8 @@ import { downloadTransactionsCsv } from "@/features/finance/export";
 import { EmptyState } from "@/features/finance/empty-state";
 import { createAccount, createCategory, fetchAccounts, fetchCategories } from "@/features/finance/finance-crud";
 import { createFinanceTransaction, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
+import { LoansView } from "@/features/finance/loans-view";
+import { InvestmentsView } from "@/features/finance/investments-view";
 import {
   createDefaultFinanceState,
   filterTransactionsBySearch,
@@ -31,7 +33,7 @@ export function FinanceShell() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [view, setView] = useState<"dashboard" | "transactions" | "accounts" | "categories" | "reports" | "settings">("dashboard");
+  const [view, setView] = useState<"dashboard" | "transactions" | "accounts" | "categories" | "reports" | "settings" | "loans" | "investments">("dashboard");
   const [search, setSearch] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [darkMode, setDarkMode] = useState(false);
@@ -212,6 +214,27 @@ export function FinanceShell() {
         ))}
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Outstanding Borrowed", value: formatCurrency(summary.outstandingBorrowed), icon: Landmark },
+          { label: "Outstanding Lent", value: formatCurrency(summary.outstandingLent), icon: Wallet },
+          { label: "Open Loans", value: String(summary.openLoansCount), icon: BriefcaseBusiness },
+          { label: "Net Invested", value: formatCurrency(summary.netInvested), icon: PiggyBank },
+        ].map((item) => (
+          <Card key={item.label}>
+            <CardContent className="flex items-center justify-between py-5">
+              <div>
+                <p className="text-sm text-[#7c9189]">{item.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+              </div>
+              <div className="rounded-2xl bg-[#1b2b24] p-3">
+                <item.icon className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card>
           <CardHeader>
@@ -329,6 +352,12 @@ export function FinanceShell() {
               <option value="all">All types</option>
               <option value="income">Income</option>
               <option value="expense">Expenses</option>
+              <option value="loan_borrow">Loan Borrow</option>
+              <option value="loan_repayment">Loan Repayment</option>
+              <option value="loan_lend">Loan Lend</option>
+              <option value="loan_receive_repayment">Loan Receive Repayment</option>
+              <option value="investment_in">Investment In</option>
+              <option value="investment_out">Investment Out</option>
             </select>
           </div>
         </CardHeader>
@@ -372,8 +401,8 @@ export function FinanceShell() {
                   <p className="text-sm text-[#7c9189]">{transaction.category} • {transaction.account} • {transaction.date}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className={transaction.type === "income" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
-                    {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount)}
+                  <p className={transaction.type === "income" || transaction.type === "loan_receive_repayment" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
+                    {transaction.type === "income" || transaction.type === "loan_receive_repayment" ? "+" : "-"}{formatCurrency(transaction.amount)}
                   </p>
                   <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
                     Edit
@@ -555,6 +584,8 @@ export function FinanceShell() {
               ["transactions", "Transactions"],
               ["accounts", "Accounts"],
               ["categories", "Categories"],
+              ["loans", "Loans"],
+              ["investments", "Investments"],
               ["reports", "Reports"],
               ["settings", "Settings"],
             ].map(([key, label]) => (
@@ -574,6 +605,8 @@ export function FinanceShell() {
           {view === "transactions" && renderTransactions()}
           {view === "accounts" && renderAccounts()}
           {view === "categories" && renderCategories()}
+          {view === "loans" && <LoansView accounts={accounts} />}
+          {view === "investments" && <InvestmentsView accounts={accounts} />}
           {view === "reports" && renderReports()}
           {view === "settings" && renderSettings()}
         </main>
