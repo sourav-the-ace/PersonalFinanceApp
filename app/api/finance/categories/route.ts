@@ -1,39 +1,38 @@
 import { NextResponse } from "next/server";
+import { getSessionProfile } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const profile = await prisma.profile.findFirst({ where: { email: "demo@northstar.finance" } });
-    if (!profile) {
-      return NextResponse.json([]);
-    }
-
-    const categories = await prisma.category.findMany({ where: { profileId: profile.id } });
+    const profileId = await getSessionProfile();
+    const categories = await prisma.category.findMany({ where: { profileId } });
     return NextResponse.json(categories);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json([], { status: 200 });
+    }
     return NextResponse.json([]);
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const profileId = await getSessionProfile();
     const body = await request.json();
-    const profile = await prisma.profile.upsert({
-      where: { email: "demo@northstar.finance" },
-      update: {},
-      create: { email: "demo@northstar.finance", name: "Demo User", currency: "USD", theme: "light" },
-    });
 
     const category = await prisma.category.create({
       data: {
-        profileId: profile.id,
+        profileId,
         name: body.name,
         type: body.type,
       },
     });
 
     return NextResponse.json(category);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ error: "Unable to create category" }, { status: 500 });
   }
 }

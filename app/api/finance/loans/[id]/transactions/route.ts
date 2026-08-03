@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDemoProfile } from "@/lib/demo-profile";
+import { getSessionProfile } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { applyBalanceDelta } from "@/lib/balance-service";
 import { validateRepayment } from "@/lib/loan-service";
@@ -7,7 +7,7 @@ import { validateRepayment } from "@/lib/loan-service";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const profile = await getDemoProfile();
+    const profileId = await getSessionProfile();
     const body = await request.json();
     const loan = await prisma.loan.findUnique({ where: { id } });
     if (!loan) {
@@ -35,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const transaction = await prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
         data: {
-          profileId: profile.id,
+          profileId,
           title: body.title,
           amount,
           type: body.type,

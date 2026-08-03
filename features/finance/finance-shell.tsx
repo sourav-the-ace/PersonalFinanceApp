@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { signOut } from "next-auth/react";
 import { BriefcaseBusiness, CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { emptyTransactionForm, createTransactionFromForm } from "@/features/fina
 import { downloadTransactionsCsv } from "@/features/finance/export";
 import { EmptyState } from "@/features/finance/empty-state";
 import { createAccount, createCategory, fetchAccounts, fetchCategories } from "@/features/finance/finance-crud";
+import { useRouter } from "next/navigation";
 import { createFinanceTransaction, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
 import { LoansView } from "@/features/finance/loans-view";
 import { InvestmentsView } from "@/features/finance/investments-view";
@@ -30,6 +32,7 @@ import { formatCurrency } from "@/utils/format";
 const palette = ["#0f172a", "#2563eb", "#7c3aed", "#14b8a6", "#f59e0b"];
 
 export function FinanceShell() {
+  const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -183,6 +186,48 @@ export function FinanceShell() {
     setCategoryForm({ name: "", type: "expense" });
   };
 
+  const handleEditAccount = async (accountId: string) => {
+    const name = window.prompt("Account name");
+    if (!name) return;
+    const response = await fetch(`/api/finance/accounts/${accountId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (response.ok) {
+      const updated = await response.json();
+      setAccounts((current) => current.map((item) => item.id === accountId ? { ...item, ...updated } : item));
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string) => {
+    const response = await fetch(`/api/finance/accounts/${accountId}`, { method: "DELETE" });
+    if (response.ok) {
+      setAccounts((current) => current.filter((item) => item.id !== accountId));
+    }
+  };
+
+  const handleEditCategory = async (categoryId: string) => {
+    const name = window.prompt("Category name");
+    if (!name) return;
+    const response = await fetch(`/api/finance/categories/${categoryId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (response.ok) {
+      const updated = await response.json();
+      setCategories((current) => current.map((item) => item.id === categoryId ? { ...item, ...updated } : item));
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    const response = await fetch(`/api/finance/categories/${categoryId}`, { method: "DELETE" });
+    if (response.ok) {
+      setCategories((current) => current.filter((item) => item.id !== categoryId));
+    }
+  };
+
   const renderDashboard = () => (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 rounded-[24px] border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
@@ -320,7 +365,11 @@ export function FinanceShell() {
                   <p className="font-medium">{account.name}</p>
                   <p className="text-sm text-[#7c9189]">{account.type}</p>
                 </div>
-                <p className="font-semibold">{formatCurrency(account.balance)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold">{formatCurrency(account.balance)}</p>
+                  <Button type="button" variant="ghost" onClick={() => void handleEditAccount(account.id)}>Edit</Button>
+                  <Button type="button" variant="ghost" onClick={() => void handleDeleteAccount(account.id)}>Delete</Button>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -473,9 +522,13 @@ export function FinanceShell() {
             <CardHeader>
               <CardTitle>{category.name}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex items-center justify-between">
               <div className="inline-flex rounded-full bg-[#1b2b24] px-3 py-1 text-sm">
                 {category.type}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" onClick={() => void handleEditCategory(category.id)}>Edit</Button>
+                <Button type="button" variant="ghost" onClick={() => void handleDeleteCategory(category.id)}>Delete</Button>
               </div>
             </CardContent>
           </Card>
@@ -578,7 +631,7 @@ export function FinanceShell() {
               A modern, scalable command center for tracking balances, transactions, categories, and reporting.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {[
               ["dashboard", "Overview"],
               ["transactions", "Transactions"],
@@ -597,6 +650,13 @@ export function FinanceShell() {
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => void signOut({ callbackUrl: "/login" })}
+              className="rounded-full border border-[#2f463f] bg-[#1b2b24] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#22332d]"
+            >
+              Logout
+            </button>
           </div>
         </header>
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BriefcaseBusiness, Landmark, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -16,6 +17,7 @@ type LoansViewProps = {
 };
 
 export function LoansView({ accounts }: LoansViewProps) {
+  const router = useRouter();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
@@ -90,6 +92,17 @@ export function LoansView({ accounts }: LoansViewProps) {
     setLoans(nextLoans);
   }
 
+  async function handleDeleteLoan() {
+    if (!selectedLoanId) return;
+    const response = await fetch(`/api/finance/loans/${selectedLoanId}`, { method: "DELETE" });
+    if (response.ok) {
+      setLoans((current) => current.filter((loan) => loan.id !== selectedLoanId));
+      setSelectedLoanId(null);
+      setSelectedLoan(null);
+      setTransactions([]);
+    }
+  }
+
   const selectedLoanLabel = useMemo(() => selectedLoan?.direction === "borrowed" ? "borrowed" : "lent", [selectedLoan]);
 
   return (
@@ -141,7 +154,10 @@ export function LoansView({ accounts }: LoansViewProps) {
               <CardTitle>{selectedLoan.title}</CardTitle>
               <p className="text-sm text-[#7c9189]">{selectedLoan.direction} • {selectedLoan.counterparty ?? "No counterparty"}</p>
             </div>
-            <Button type="button" variant="outline" onClick={handleCloseLoan}>Close loan</Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={handleCloseLoan}>Close loan</Button>
+              <Button type="button" variant="outline" onClick={() => void handleDeleteLoan()}>Delete loan</Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-2">

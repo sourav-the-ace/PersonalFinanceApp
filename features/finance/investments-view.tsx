@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BriefcaseBusiness, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -16,6 +17,7 @@ type InvestmentsViewProps = {
 };
 
 export function InvestmentsView({ accounts }: InvestmentsViewProps) {
+  const router = useRouter();
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [selectedInvestmentId, setSelectedInvestmentId] = useState<string | null>(null);
   const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
@@ -68,6 +70,17 @@ export function InvestmentsView({ accounts }: InvestmentsViewProps) {
     setInvestments(nextInvestments);
   }
 
+  async function handleDeleteInvestment() {
+    if (!selectedInvestmentId) return;
+    const response = await fetch(`/api/finance/investments/${selectedInvestmentId}`, { method: "DELETE" });
+    if (response.ok) {
+      setInvestments((current) => current.filter((investment) => investment.id !== selectedInvestmentId));
+      setSelectedInvestmentId(null);
+      setSelectedInvestment(null);
+      setTransactions([]);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -107,8 +120,9 @@ export function InvestmentsView({ accounts }: InvestmentsViewProps) {
 
       {selectedInvestment ? (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>{selectedInvestment.name}</CardTitle>
+            <Button type="button" variant="outline" onClick={() => void handleDeleteInvestment()}>Delete investment</Button>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-3">

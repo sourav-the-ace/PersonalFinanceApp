@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getDemoProfile } from "@/lib/demo-profile";
 import { prisma } from "@/lib/prisma";
+import { getSessionProfile } from "@/lib/auth";
 import { getLoanOutstanding } from "@/lib/loan-service";
 
 export async function GET() {
   try {
-    const profile = await getDemoProfile();
+    const profileId = await getSessionProfile();
     const loans = await prisma.loan.findMany({
-      where: { profileId: profile.id },
+      where: { profileId },
       orderBy: { createdAt: "desc" },
     });
 
@@ -26,11 +26,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const profile = await getDemoProfile();
+    const profileId = await getSessionProfile();
     const body = await request.json();
     const loan = await prisma.loan.create({
       data: {
-        profileId: profile.id,
+        profileId,
         title: body.title,
         direction: body.direction,
         counterparty: body.counterparty ?? null,

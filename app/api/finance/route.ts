@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveTransactionRelationIds } from "@/lib/finance-relations";
 import { isFinanceStateSyncPayload } from "@/features/finance/finance-service";
-import { getDemoProfile } from "@/lib/demo-profile";
 import { applyBalanceDelta } from "@/lib/balance-service";
+import { getSessionProfile } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
 type TransactionWithRelations = Prisma.TransactionGetPayload<{
@@ -12,9 +12,9 @@ type TransactionWithRelations = Prisma.TransactionGetPayload<{
 
 export async function GET() {
   try {
-    const profile = await getDemoProfile();
+    const profileId = await getSessionProfile();
     const fullProfile = await prisma.profile.findFirst({
-      where: { id: profile.id },
+      where: { id: profileId },
       include: {
         transactions: {
           include: {
@@ -47,7 +47,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const profile = await getDemoProfile();
+    const profileId = await getSessionProfile();
     const body = await request.json();
     const { categoryId, accountId } = await resolveTransactionRelationIds(
       {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           create: (args) => prisma.account.create(args),
         },
       },
-      profile.id,
+      profileId,
       body,
     );
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     const transaction = await prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
         data: {
-          profileId: profile.id,
+          profileId,
           title: body.title,
           amount,
           type: body.type,
