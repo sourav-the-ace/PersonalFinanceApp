@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { applyBalanceDelta } from "@/lib/balance-service";
+import { applyBalanceDelta, getTransactionBalanceDelta } from "@/lib/balance-service";
+import { getSessionProfile } from "@/lib/auth";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const profileId = await getSessionProfile();
     const { id } = await params;
     const body = await request.json();
-    const existing = await prisma.transaction.findUnique({ where: { id } });
+    const existing = await prisma.transaction.findFirst({ where: { id, profileId } });
 
     if (!existing) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
@@ -16,8 +18,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const nextType = body.type ?? existing.type;
     const nextDate = body.date ?? existing.date;
     const nextNotes = body.notes ?? existing.notes;
-    const oldDelta = existing.type === "income" ? existing.amount : existing.type === "expense" ? -existing.amount : 0;
-    const newDelta = nextType === "income" ? nextAmount : nextType === "expense" ? -nextAmount : 0;
+    const oldDelta = getTransactionBalanceDelta(existing.type, existing.amount);
+    const newDelta = getTransactionBalanceDelta(nextType, nextAmount);
 
     const updateData: Record<string, unknown> = {
       title: body.title ?? existing.title,
@@ -28,13 +30,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     };
 
     if (body.categoryId) {
-      updateData.category = { connect: { id: body.categoryId } };
+      const category = await prisma.category.findFirst({ where: { id: body.categoryId, profileId } });
+      if (category) {
+        updateData.category = { connect: { id: body.categoryId } };
+      }
     } else {
       updateData.category = { disconnect: true };
     }
 
     if (body.accountId) {
-      updateData.account = { connect: { id: body.accountId } };
+      const account = await prisma.account.findFirst({ where: { id: body.accountId, profileId } });
+      if (account) {
+        updateData.account = { connect: { id: body.accountId } };
+      }
     } else {
       updateData.account = { disconnect: true };
     }
@@ -55,28 +63,35 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       category: transaction.category?.name ?? "",
       account: transaction.account?.name ?? "",
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ error: "Unable to update transaction" }, { status: 500 });
   }
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const profileId = await getSessionProfile();
     const { id } = await params;
-    const existing = await prisma.transaction.findUnique({ where: { id } });
+    const existing = await prisma.transaction.findFirst({ where: { id, profileId } });
 
     if (!existing) {
-      return NextResponse.json({ success: false });
+      return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
     await prisma.$transaction(async (tx) => {
-      const delta = existing.type === "income" ? existing.amount : existing.type === "expense" ? -existing.amount : 0;
+      const delta = getTransactionBalanceDelta(existing.type, existing.amount);
       await applyBalanceDelta(tx, existing.accountId, -delta);
       await tx.transaction.delete({ where: { id } });
     });
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ success: false });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Unable to delete transaction" }, { status: 500 });
   }
 }

@@ -21,7 +21,8 @@ type InvestmentTransactionPayload = {
 export async function fetchInvestments() {
   const response = await fetch("/api/finance/investments", { cache: "no-store" });
   if (!response.ok) {
-    throw new Error("Failed to load investments");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to load investments");
   }
   return response.json() as Promise<Investment[]>;
 }
@@ -33,7 +34,8 @@ export async function createInvestment(payload: InvestmentPayload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to create investment");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to create investment");
   }
   return response.json() as Promise<Investment>;
 }
@@ -41,7 +43,8 @@ export async function createInvestment(payload: InvestmentPayload) {
 export async function fetchInvestment(id: string) {
   const response = await fetch(`/api/finance/investments/${id}`, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error("Failed to load investment");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to load investment");
   }
   return response.json() as Promise<{ investment: Investment; transactions: Transaction[] }>;
 }
@@ -53,7 +56,8 @@ export async function updateInvestment(id: string, payload: InvestmentUpdatePayl
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to update investment");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to update investment");
   }
   return response.json() as Promise<Investment>;
 }
@@ -65,7 +69,8 @@ export async function createInvestmentTransaction(id: string, payload: Investmen
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to create investment transaction");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to create investment transaction");
   }
   return response.json() as Promise<Transaction>;
 }

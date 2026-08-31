@@ -56,31 +56,57 @@ export function LoansView({ accounts }: LoansViewProps) {
     setTransactions(result.transactions);
   }
 
+  useEffect(() => {
+    if (accounts.length > 0 && !txForm.accountId) {
+      setTxForm((prev) => ({ ...prev, accountId: accounts[0].id }));
+    }
+  }, [accounts, txForm.accountId]);
+
   async function handleCreateLoan(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const created = await createLoan(form);
-    setLoans((current) => [created, ...current]);
+    const loanWithOutstanding: Loan = { ...created, outstanding: created.outstanding ?? 0 };
+    setLoans((current) => [loanWithOutstanding, ...current]);
     setSelectedLoanId(created.id);
+    setSelectedLoan(loanWithOutstanding);
     setForm({ title: "", direction: "borrowed", counterparty: "", notes: "" });
   }
 
   async function handleCreateTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedLoanId) return;
+    if (!txForm.accountId) {
+      alert("Please select an account for this transaction");
+      return;
+    }
+    const isRepayment = txForm.type.endsWith("repayment");
     const payload = {
       ...txForm,
-      principalAmount: txForm.principalAmount ? Number(txForm.principalAmount) : undefined,
-      interestAmount: txForm.interestAmount ? Number(txForm.interestAmount) : undefined,
+      amount: !isRepayment && txForm.principalAmount ? Number(txForm.principalAmount) : undefined,
+      principalAmount: isRepayment && txForm.principalAmount ? Number(txForm.principalAmount) : undefined,
+      interestAmount: isRepayment && txForm.interestAmount ? Number(txForm.interestAmount) : undefined,
       accountId: txForm.accountId,
     };
-    const created = await createLoanTransaction(selectedLoanId, payload as never);
-    setTransactions((current) => [created, ...current]);
-    setTxForm({ type: selectedLoan?.direction === "borrowed" ? "loan_borrow" : "loan_lend", title: "", principalAmount: "", interestAmount: "", accountId: "", date: new Date().toISOString().slice(0, 10), notes: "" });
-    const nextLoans = await fetchLoans();
-    setLoans(nextLoans);
-    if (selectedLoan) {
-      const refreshed = await fetchLoan(selectedLoanId);
-      setSelectedLoan(refreshed.loan);
+    try {
+      const created = await createLoanTransaction(selectedLoanId, payload as never);
+      setTransactions((current) => [created, ...current]);
+      setTxForm({
+        type: selectedLoan?.direction === "borrowed" ? "loan_borrow" : "loan_lend",
+        title: "",
+        principalAmount: "",
+        interestAmount: "",
+        accountId: txForm.accountId,
+        date: new Date().toISOString().slice(0, 10),
+        notes: "",
+      });
+      const nextLoans = await fetchLoans();
+      setLoans(nextLoans);
+      if (selectedLoanId) {
+        const refreshed = await fetchLoan(selectedLoanId);
+        setSelectedLoan(refreshed.loan);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create loan transaction");
     }
   }
 
@@ -94,12 +120,40 @@ export function LoansView({ accounts }: LoansViewProps) {
 
   async function handleDeleteLoan() {
     if (!selectedLoanId) return;
-    const response = await fetch(`/api/finance/loans/${selectedLoanId}`, { method: "DELETE" });
-    if (response.ok) {
+    if (!confirm("Are you sure you want to delete this loan?")) return;
+    try {
+      const response = await fetch(`/api/finance/loans/${selectedLoanId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete loan");
+      }
       setLoans((current) => current.filter((loan) => loan.id !== selectedLoanId));
       setSelectedLoanId(null);
       setSelectedLoan(null);
       setTransactions([]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete loan");
+    }
+  }
+
+  async function handleDeleteTransaction(transactionId: string) {
+    if (!selectedLoanId) return;
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
+    try {
+      const response = await fetch(`/api/finance/loans/${selectedLoanId}/transactions/${transactionId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete transaction");
+      }
+      setTransactions((current) => current.filter((tx) => tx.id !== transactionId));
+      const refreshed = await fetchLoan(selectedLoanId);
+      setSelectedLoan(refreshed.loan);
+      const nextLoans = await fetchLoans();
+      setLoans(nextLoans);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete transaction");
     }
   }
 
@@ -172,6 +226,11 @@ export function LoansView({ accounts }: LoansViewProps) {
             </div>
 
             <form onSubmit={handleCreateTransaction} className="grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-2">
+              {accounts.length === 0 ? (
+                <div className="md:col-span-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                  ⚠️ No accounts found. Please create an account in the <strong>Accounts</strong> tab before recording loan transactions.
+                </div>
+              ) : null}
               <Select value={txForm.type} onChange={(event) => setTxForm({ ...txForm, type: event.target.value as "loan_borrow" | "loan_lend" | "loan_repayment" | "loan_receive_repayment" })}>
                 <option value={selectedLoanLabel === "borrowed" ? "loan_borrow" : "loan_lend"}>{selectedLoanLabel === "borrowed" ? "Borrow" : "Lend"}</option>
                 <option value={selectedLoanLabel === "borrowed" ? "loan_repayment" : "loan_receive_repayment"}>{selectedLoanLabel === "borrowed" ? "Repayment" : "Receive repayment"}</option>
@@ -185,10 +244,10 @@ export function LoansView({ accounts }: LoansViewProps) {
               ) : (
                 <Input type="number" placeholder="Amount" value={txForm.principalAmount} onChange={(event) => setTxForm({ ...txForm, principalAmount: event.target.value })} required />
               )}
-              <Select value={txForm.accountId} onChange={(event) => setTxForm({ ...txForm, accountId: event.target.value })}>
+              <Select value={txForm.accountId} onChange={(event) => setTxForm({ ...txForm, accountId: event.target.value })} required>
                 <option value="">Select account</option>
                 {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>{account.name}</option>
+                  <option key={account.id} value={account.id}>{account.name} ({formatCurrency(account.balance)})</option>
                 ))}
               </Select>
               <Input type="date" value={txForm.date} onChange={(event) => setTxForm({ ...txForm, date: event.target.value })} required />
@@ -203,9 +262,19 @@ export function LoansView({ accounts }: LoansViewProps) {
                     <p className="font-medium">{transaction.title}</p>
                     <p className="text-sm text-[#7c9189]">{transaction.date}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{formatCurrency(transaction.amount)}</p>
-                    <p className="text-sm text-[#7c9189]">{transaction.type}</p>
+                  <div className="flex items-center gap-4 text-right">
+                    <div>
+                      <p className="font-semibold">{formatCurrency(transaction.amount)}</p>
+                      <p className="text-sm text-[#7c9189]">{transaction.type}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-rose-400 hover:text-rose-300"
+                      onClick={() => void handleDeleteTransaction(transaction.id)}
+                    >
+                      Delete
+                    </Button>
                   </div>
                 </div>
               ))}

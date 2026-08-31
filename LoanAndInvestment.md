@@ -246,17 +246,14 @@ export async function getInvestmentTotals(investmentId: string) {
     realizedPnL: totalReturned - totalInvested,
   };
 }
-
-export function validateWithdrawal(netInvested: number, amount: number) {
-  if (amount > netInvested) {
-    throw new Error(`Withdrawal ${amount} exceeds net invested ${netInvested}`);
-  }
-}
 ```
+
+**Investment Withdrawals & Profits:**
+- Withdrawals (`investment_out`) can exceed invested amount when an investment yields profit (`realizedPnL > 0`). Withdrawals are therefore not capped at `netInvested`.
 
 **Closure validation** (call before allowing `status: "closed"` on PUT):
 - Loan: reject unless `getLoanOutstanding(...) === 0`.
-- Investment: reject unless `netInvested === 0`.
+- Investment: reject if `netInvested > 0` (all invested principal should be returned before closing).
 
 **Acceptance criteria:**
 - [ ] A repayment/withdrawal exceeding the outstanding/invested amount

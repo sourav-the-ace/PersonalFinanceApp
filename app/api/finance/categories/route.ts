@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const profileId = await getSessionProfile();
-    const categories = await prisma.category.findMany({ where: { profileId } });
+    const categories = await prisma.category.findMany({ where: { profileId }, orderBy: { createdAt: "asc" } });
     return NextResponse.json(categories);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

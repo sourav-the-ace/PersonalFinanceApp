@@ -3,7 +3,6 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { getDemoProfile } from "@/lib/demo-profile";
 
 type SessionUserWithProfile = {
   id?: string;
@@ -148,15 +147,10 @@ export async function getSessionProfile() {
   const userId = sessionUser?.userId ?? sessionUser?.id ?? null;
   const email = sessionUser?.email ?? null;
 
-  if (userId) {
-    const profile = await ensureProfileForUser(userId, email ?? `${userId}@local`);
-    return profile.id;
-  }
-
-  const demoProfile = await getDemoProfile();
-  if (!demoProfile) {
+  if (!userId) {
     throw new Error("Unauthorized");
   }
 
-  return demoProfile.id;
+  const profile = await ensureProfileForUser(userId, email ?? `${userId}@local`);
+  return profile.id;
 }

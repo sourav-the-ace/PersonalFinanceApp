@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const profileId = await getSessionProfile();
-    const accounts = await prisma.account.findMany({ where: { profileId } });
+    const accounts = await prisma.account.findMany({ where: { profileId }, orderBy: { createdAt: "asc" } });
     return NextResponse.json(accounts);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

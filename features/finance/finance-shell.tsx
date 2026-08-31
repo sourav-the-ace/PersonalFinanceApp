@@ -17,25 +17,46 @@ import { EmptyState } from "@/features/finance/empty-state";
 import { createAccount, createCategory, fetchAccounts, fetchCategories } from "@/features/finance/finance-crud";
 import { useRouter } from "next/navigation";
 import { createFinanceTransaction, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
+import { fetchLoans } from "@/features/finance/loan-api";
+import { fetchInvestments } from "@/features/finance/investment-api";
 import { LoansView } from "@/features/finance/loans-view";
 import { InvestmentsView } from "@/features/finance/investments-view";
-import {
-  createDefaultFinanceState,
-  filterTransactionsBySearch,
-  loadPersistedFinanceState,
-  savePersistedFinanceState,
-  syncFinanceStateToSupabase,
-} from "@/features/finance/finance-service";
-import type { Account, Category, Transaction, TransactionType } from "@/types/finance";
+import { filterTransactionsBySearch } from "@/features/finance/finance-service";
+import type { Account, Category, Investment, Loan, Transaction, TransactionType } from "@/types/finance";
 import { formatCurrency } from "@/utils/format";
 
 const palette = ["#0f172a", "#2563eb", "#7c3aed", "#14b8a6", "#f59e0b"];
+
+function isPositiveFlow(type: string): boolean {
+  return ["income", "loan_borrow", "loan_receive_repayment", "investment_out"].includes(type);
+}
+
+function renderTransactionBadge(type: string) {
+  switch (type) {
+    case "loan_borrow":
+      return <span className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400 font-medium">Loan Borrow</span>;
+    case "loan_lend":
+      return <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400 font-medium">Loan Lent</span>;
+    case "loan_repayment":
+      return <span className="inline-flex items-center rounded-full bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400 font-medium">Loan Repayment</span>;
+    case "loan_receive_repayment":
+      return <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-400 font-medium">Loan Repaid</span>;
+    case "investment_in":
+      return <span className="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-400 font-medium">Investment In</span>;
+    case "investment_out":
+      return <span className="inline-flex items-center rounded-full bg-teal-500/20 px-2 py-0.5 text-xs text-teal-400 font-medium">Investment Out</span>;
+    default:
+      return null;
+  }
+}
 
 export function FinanceShell() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [view, setView] = useState<"dashboard" | "transactions" | "accounts" | "categories" | "reports" | "settings" | "loans" | "investments">("dashboard");
   const [search, setSearch] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -49,45 +70,57 @@ export function FinanceShell() {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    const persistedState = loadPersistedFinanceState();
-    const nextState = persistedState ?? createDefaultFinanceState();
-    setTransactions(nextState.transactions);
-    setAccounts(nextState.accounts);
-    setCategories(nextState.categories);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem("northstar-finance-state");
+      } catch {}
+    }
     setIsHydrated(true);
 
     void fetchFinanceData().then((response) => {
-      if (response.transactions.length > 0 || response.accounts.length > 0 || response.categories.length > 0) {
-        setTransactions(response.transactions);
-        setAccounts(response.accounts);
-        setCategories(response.categories);
-      }
+      setTransactions(response.transactions || []);
+      setAccounts(response.accounts || []);
+      setCategories(response.categories || []);
     });
 
     void fetchAccounts().then((nextAccounts) => {
-      if (nextAccounts.length > 0) {
+      if (Array.isArray(nextAccounts)) {
         setAccounts(nextAccounts);
       }
     });
 
     void fetchCategories().then((nextCategories) => {
-      if (nextCategories.length > 0) {
+      if (Array.isArray(nextCategories)) {
         setCategories(nextCategories);
       }
     });
+
+    void fetchLoans().then((nextLoans) => {
+      if (Array.isArray(nextLoans)) {
+        setLoans(nextLoans);
+      }
+    }).catch(() => {});
+
+    void fetchInvestments().then((nextInvestments) => {
+      if (Array.isArray(nextInvestments)) {
+        setInvestments(nextInvestments);
+      }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
+    if (view === "dashboard" || view === "loans") {
+      void fetchLoans().then((nextLoans) => Array.isArray(nextLoans) && setLoans(nextLoans)).catch(() => {});
     }
+    if (view === "dashboard" || view === "investments") {
+      void fetchInvestments().then((nextInvestments) => Array.isArray(nextInvestments) && setInvestments(nextInvestments)).catch(() => {});
+    }
+  }, [view]);
 
-    const nextState = { transactions, accounts, categories };
-    savePersistedFinanceState(nextState);
-    void syncFinanceStateToSupabase(nextState);
-  }, [accounts, categories, isHydrated, transactions]);
-
-  const summary = useMemo(() => buildDashboardSummary(transactions, accounts, selectedMonth), [transactions, accounts, selectedMonth]);
+  const summary = useMemo(
+    () => buildDashboardSummary(transactions, accounts, selectedMonth, loans, investments),
+    [transactions, accounts, selectedMonth, loans, investments]
+  );
   const filteredTransactions = useMemo(() => {
     return filterTransactionsBySearch(transactions, search, typeFilter);
   }, [transactions, search, typeFilter]);
@@ -201,9 +234,16 @@ export function FinanceShell() {
   };
 
   const handleDeleteAccount = async (accountId: string) => {
-    const response = await fetch(`/api/finance/accounts/${accountId}`, { method: "DELETE" });
-    if (response.ok) {
+    if (!confirm("Are you sure you want to delete this account?")) return;
+    try {
+      const response = await fetch(`/api/finance/accounts/${accountId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Unable to delete account");
+      }
       setAccounts((current) => current.filter((item) => item.id !== accountId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete account");
     }
   };
 
@@ -222,9 +262,16 @@ export function FinanceShell() {
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    const response = await fetch(`/api/finance/categories/${categoryId}`, { method: "DELETE" });
-    if (response.ok) {
+    if (!confirm("Are you sure you want to delete this category?")) return;
+    try {
+      const response = await fetch(`/api/finance/categories/${categoryId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Unable to delete category");
+      }
       setCategories((current) => current.filter((item) => item.id !== categoryId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete category");
     }
   };
 
@@ -335,20 +382,26 @@ export function FinanceShell() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {summary.recentTransactions.map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
-                    <div>
-                      <p className="font-medium">{transaction.title}</p>
-                      <p className="text-sm text-[#7c9189]">{transaction.category} • {transaction.date}</p>
+                {summary.recentTransactions.map((transaction) => {
+                  const positive = isPositiveFlow(transaction.type);
+                  return (
+                    <div key={transaction.id} className="flex items-center justify-between rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{transaction.title}</p>
+                          {renderTransactionBadge(transaction.type)}
+                        </div>
+                        <p className="text-sm text-[#7c9189]">{transaction.category || transaction.account} • {transaction.date}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
+                          {positive ? "+" : "-"}{formatCurrency(transaction.amount)}
+                        </p>
+                        <p className="text-sm text-[#7c9189]">{transaction.account}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className={transaction.type === "income" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
-                        {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount)}
-                      </p>
-                      <p className="text-sm text-[#7c9189]">{transaction.account}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -443,25 +496,33 @@ export function FinanceShell() {
           </form>
 
           <div className="space-y-3">
-            {filteredTransactions.map((transaction) => (
-              <div key={transaction.id} className="flex flex-col gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="font-medium">{transaction.title}</p>
-                  <p className="text-sm text-[#7c9189]">{transaction.category} • {transaction.account} • {transaction.date}</p>
+            {filteredTransactions.map((transaction) => {
+              const positive = isPositiveFlow(transaction.type);
+              return (
+                <div key={transaction.id} className="flex flex-col gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{transaction.title}</p>
+                      {renderTransactionBadge(transaction.type)}
+                    </div>
+                    <p className="text-sm text-[#7c9189]">
+                      {transaction.category ? `${transaction.category} • ` : ""}{transaction.account ? `${transaction.account} • ` : ""}{transaction.date}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
+                      {positive ? "+" : "-"}{formatCurrency(transaction.amount)}
+                    </p>
+                    <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" type="button" className="text-rose-400 hover:text-rose-300" onClick={() => removeTransaction(transaction.id)}>
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <p className={transaction.type === "income" || transaction.type === "loan_receive_repayment" ? "text-[#3fe0a5]" : "text-[#F2545B]"}>
-                    {transaction.type === "income" || transaction.type === "loan_receive_repayment" ? "+" : "-"}{formatCurrency(transaction.amount)}
-                  </p>
-                  <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
-                    Edit
-                  </Button>
-                  <Button variant="ghost" type="button" onClick={() => removeTransaction(transaction.id)}>
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -486,8 +547,12 @@ export function FinanceShell() {
       <div className="grid gap-6 md:grid-cols-2">
         {accounts.map((account) => (
           <Card key={account.id}>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{account.name}</CardTitle>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" onClick={() => void handleEditAccount(account.id)}>Edit</Button>
+                <Button type="button" variant="ghost" className="text-rose-400 hover:text-rose-300" onClick={() => void handleDeleteAccount(account.id)}>Delete</Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-[#7c9189]">{account.type}</p>

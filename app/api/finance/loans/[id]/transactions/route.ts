@@ -9,15 +9,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const profileId = await getSessionProfile();
     const body = await request.json();
-    const loan = await prisma.loan.findUnique({ where: { id } });
+    const loan = await prisma.loan.findFirst({ where: { id, profileId } });
     if (!loan) {
       return NextResponse.json({ error: "Loan not found" }, { status: 404 });
+    }
+
+    const accountId = body.accountId && String(body.accountId).trim() !== "" ? String(body.accountId).trim() : null;
+    if (!accountId) {
+      return NextResponse.json({ error: "Please select an account for this transaction" }, { status: 400 });
+    }
+
+    const account = await prisma.account.findFirst({ where: { id: accountId, profileId } });
+    if (!account) {
+      return NextResponse.json({ error: "Selected account was not found" }, { status: 400 });
     }
 
     const repaymentType = body.type === "loan_repayment" || body.type === "loan_receive_repayment";
     const amount = repaymentType
       ? Number(body.principalAmount ?? 0) + Number(body.interestAmount ?? 0)
       : Number(body.amount ?? 0);
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Transaction amount must be greater than zero" }, { status: 400 });
+    }
 
     if (repaymentType) {
       const outstanding = await prisma.transaction.aggregate({
@@ -36,21 +50,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const created = await tx.transaction.create({
         data: {
           profileId,
-          title: body.title,
+          title: body.title || (repaymentType ? "Loan Repayment" : loan.direction === "borrowed" ? "Loan Borrow" : "Loan Lend"),
           amount,
           type: body.type,
           loanId: id,
-          accountId: body.accountId ?? null,
+          accountId,
           date: body.date,
           notes: body.notes ?? null,
-          principalAmount: body.principalAmount ?? null,
-          interestAmount: body.interestAmount ?? null,
+          principalAmount: body.principalAmount ? Number(body.principalAmount) : null,
+          interestAmount: body.interestAmount ? Number(body.interestAmount) : null,
           categoryId: null,
         },
       });
 
       const delta = body.type === "loan_borrow" || body.type === "loan_receive_repayment" ? amount : -amount;
-      await applyBalanceDelta(tx, body.accountId, delta);
+      await applyBalanceDelta(tx, accountId, delta);
       return created;
     });
 

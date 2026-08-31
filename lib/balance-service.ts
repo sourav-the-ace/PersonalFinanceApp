@@ -17,3 +17,20 @@ export async function applyBalanceDelta(
 export function directionalDelta(amount: number, direction: "in" | "out") {
   return direction === "in" ? amount : -amount;
 }
+
+export function getTransactionBalanceDelta(type: string, amount: number): number {
+  switch (type) {
+    case "income":
+    case "loan_borrow":
+    case "loan_receive_repayment":
+    case "investment_out":
+      return amount;
+    case "expense":
+    case "loan_lend":
+    case "loan_repayment":
+    case "investment_in":
+      return -amount;
+    default:
+      return 0;
+  }
+}

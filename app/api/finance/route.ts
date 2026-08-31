@@ -40,7 +40,10 @@ export async function GET() {
       accounts: fullProfile.accounts,
       categories: fullProfile.categories,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ transactions: [], accounts: [], categories: [] });
   }
 }
@@ -49,6 +52,15 @@ export async function POST(request: Request) {
   try {
     const profileId = await getSessionProfile();
     const body = await request.json();
+
+    if (isFinanceStateSyncPayload(body)) {
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!body.title || !body.type) {
+      return NextResponse.json({ error: "Title and type are required" }, { status: 400 });
+    }
+
     const { categoryId, accountId } = await resolveTransactionRelationIds(
       {
         category: {
@@ -90,7 +102,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(transaction);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ error: "Unable to create transaction" }, { status: 500 });
   }
 }

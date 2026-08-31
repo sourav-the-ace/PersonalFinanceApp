@@ -18,9 +18,3 @@ export async function getInvestmentTotals(investmentId: string) {
     realizedPnL: totalReturned - totalInvested,
   };
 }
-
-export function validateWithdrawal(netInvested: number, amount: number) {
-  if (amount > netInvested) {
-    throw new Error(`Withdrawal ${amount} exceeds net invested ${netInvested}`);
-  }
-}

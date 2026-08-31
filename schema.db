@@ -1,0 +1,190 @@
+-- PostgreSQL Live Database Schema DDL
+-- Generated on: 2026-08-31
+-- Database: Supabase PostgreSQL (postgres)
+-- Host: aws-1-ap-south-1.pooler.supabase.com (AWS ap-south-1)
+
+CREATE SCHEMA IF NOT EXISTS public;
+
+-- ============================================================================
+-- Table: User
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."User" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Profile
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Profile" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT,
+    "email" TEXT NOT NULL,
+    "name" TEXT,
+    "currency" TEXT NOT NULL DEFAULT 'USD'::text,
+    "theme" TEXT NOT NULL DEFAULT 'light'::text,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Profile_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Account
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Account" (
+    "id" TEXT NOT NULL,
+    "profileId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "balance" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Account_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Category
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Category" (
+    "id" TEXT NOT NULL,
+    "profileId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Category_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Loan
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Loan" (
+    "id" TEXT NOT NULL,
+    "profileId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "direction" TEXT NOT NULL,
+    "counterparty" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'open'::text,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Loan_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Investment
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Investment" (
+    "id" TEXT NOT NULL,
+    "profileId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "assetType" TEXT NOT NULL,
+    "institution" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'open'::text,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Investment_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: Transaction
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."Transaction" (
+    "id" TEXT NOT NULL,
+    "profileId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "amount" DOUBLE PRECISION NOT NULL,
+    "type" TEXT NOT NULL,
+    "categoryId" TEXT,
+    "accountId" TEXT,
+    "loanId" TEXT,
+    "investmentId" TEXT,
+    "principalAmount" DOUBLE PRECISION,
+    "interestAmount" DOUBLE PRECISION,
+    "date" TEXT NOT NULL,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Transaction_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Table: _prisma_migrations
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public."_prisma_migrations" (
+    "id" VARCHAR(36) NOT NULL,
+    "checksum" VARCHAR(64) NOT NULL,
+    "finished_at" TIMESTAMP WITH TIME ZONE,
+    "migration_name" VARCHAR(255) NOT NULL,
+    "logs" TEXT,
+    "rolled_back_at" TIMESTAMP WITH TIME ZONE,
+    "started_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "applied_steps_count" INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT "_prisma_migrations_pkey" PRIMARY KEY ("id")
+);
+
+-- ============================================================================
+-- Foreign Key Constraints
+-- ============================================================================
+ALTER TABLE public."Profile"
+    ADD CONSTRAINT "Profile_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES public."User" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Account"
+    ADD CONSTRAINT "Account_profileId_fkey"
+    FOREIGN KEY ("profileId") REFERENCES public."Profile" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Category"
+    ADD CONSTRAINT "Category_profileId_fkey"
+    FOREIGN KEY ("profileId") REFERENCES public."Profile" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Loan"
+    ADD CONSTRAINT "Loan_profileId_fkey"
+    FOREIGN KEY ("profileId") REFERENCES public."Profile" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Investment"
+    ADD CONSTRAINT "Investment_profileId_fkey"
+    FOREIGN KEY ("profileId") REFERENCES public."Profile" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_profileId_fkey"
+    FOREIGN KEY ("profileId") REFERENCES public."Profile" ("id")
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_accountId_fkey"
+    FOREIGN KEY ("accountId") REFERENCES public."Account" ("id")
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_categoryId_fkey"
+    FOREIGN KEY ("categoryId") REFERENCES public."Category" ("id")
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_loanId_fkey"
+    FOREIGN KEY ("loanId") REFERENCES public."Loan" ("id")
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_investmentId_fkey"
+    FOREIGN KEY ("investmentId") REFERENCES public."Investment" ("id")
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- ============================================================================
+-- Indexes & Unique Constraints
+-- ============================================================================
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON public."User" USING btree ("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "Profile_email_key" ON public."Profile" USING btree ("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "Profile_userId_key" ON public."Profile" USING btree ("userId");
+

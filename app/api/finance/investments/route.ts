@@ -19,8 +19,11 @@ export async function GET() {
     );
 
     return NextResponse.json(investmentsWithTotals);
-  } catch {
-    return NextResponse.json([], { status: 500 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json([], { status: 200 });
+    }
+    return NextResponse.json([]);
   }
 }
 
@@ -37,7 +40,13 @@ export async function POST(request: Request) {
         notes: body.notes ?? null,
       },
     });
-    return NextResponse.json(investment);
+    return NextResponse.json({
+      ...investment,
+      totalInvested: 0,
+      totalReturned: 0,
+      netInvested: 0,
+      realizedPnL: 0,
+    });
   } catch {
     return NextResponse.json({ error: "Unable to create investment" }, { status: 500 });
   }

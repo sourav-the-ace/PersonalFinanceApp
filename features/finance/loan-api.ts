@@ -23,7 +23,8 @@ type LoanTransactionPayload = {
 export async function fetchLoans() {
   const response = await fetch("/api/finance/loans", { cache: "no-store" });
   if (!response.ok) {
-    throw new Error("Failed to load loans");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to load loans");
   }
   return response.json() as Promise<Loan[]>;
 }
@@ -35,7 +36,8 @@ export async function createLoan(payload: LoanPayload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to create loan");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to create loan");
   }
   return response.json() as Promise<Loan>;
 }
@@ -43,7 +45,8 @@ export async function createLoan(payload: LoanPayload) {
 export async function fetchLoan(id: string) {
   const response = await fetch(`/api/finance/loans/${id}`, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error("Failed to load loan");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to load loan");
   }
   return response.json() as Promise<{ loan: Loan; transactions: Transaction[] }>;
 }
@@ -55,7 +58,8 @@ export async function updateLoan(id: string, payload: LoanUpdatePayload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to update loan");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to update loan");
   }
   return response.json() as Promise<Loan>;
 }
@@ -67,7 +71,8 @@ export async function createLoanTransaction(id: string, payload: LoanTransaction
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to create loan transaction");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Failed to create loan transaction");
   }
   return response.json() as Promise<Transaction>;
 }

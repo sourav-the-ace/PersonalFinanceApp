@@ -12,7 +12,6 @@
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",
     "@prisma/client": "^6.19.3",
-    "@supabase/supabase-js": "^2.110.9",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-query-devtools": "^5.101.4",
     "bcryptjs": "^3.0.3",

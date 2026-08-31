@@ -19,8 +19,11 @@ export async function GET() {
     );
 
     return NextResponse.json(loansWithOutstanding);
-  } catch {
-    return NextResponse.json([], { status: 500 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json([], { status: 200 });
+    }
+    return NextResponse.json([]);
   }
 }
 
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
         notes: body.notes ?? null,
       },
     });
-    return NextResponse.json(loan);
+    return NextResponse.json({ ...loan, outstanding: 0 });
   } catch {
     return NextResponse.json({ error: "Unable to create loan" }, { status: 500 });
   }
