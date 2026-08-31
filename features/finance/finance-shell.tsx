@@ -59,7 +59,7 @@ export function FinanceShell() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [view, setView] = useState<"dashboard" | "transactions" | "accounts" | "categories" | "reports" | "settings" | "loans" | "investments">("dashboard");
   const [search, setSearch] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("BDT");
   const [darkMode, setDarkMode] = useState(false);
   const [accountForm, setAccountForm] = useState({ name: "", type: "Bank", balance: 0 });
   const [categoryForm, setCategoryForm] = useState({ name: "", type: "expense" as TransactionType });
@@ -67,6 +67,10 @@ export function FinanceShell() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [form, setForm] = useState(emptyTransactionForm);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editAccountForm, setEditAccountForm] = useState({ name: "", type: "Bank" });
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryForm, setEditCategoryForm] = useState<{ name: string; type: TransactionType }>({ name: "", type: "expense" });
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
@@ -76,6 +80,20 @@ export function FinanceShell() {
       } catch {}
     }
     setIsHydrated(true);
+
+    void fetch("/api/finance/settings").then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.currency) setCurrency(data.currency);
+        if (data.theme) {
+          const isDark = data.theme === "dark";
+          setDarkMode(isDark);
+          if (typeof document !== "undefined") {
+            document.documentElement.classList.toggle("dark", isDark);
+          }
+        }
+      }
+    }).catch(() => {});
 
     void fetchFinanceData().then((response) => {
       setTransactions(response.transactions || []);
@@ -107,6 +125,27 @@ export function FinanceShell() {
       }
     }).catch(() => {});
   }, []);
+
+  const handleCurrencyChange = async (newCurrency: string) => {
+    setCurrency(newCurrency);
+    await fetch("/api/finance/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currency: newCurrency }),
+    }).catch(() => {});
+  };
+
+  const handleThemeChange = async (isDark: boolean) => {
+    setDarkMode(isDark);
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", isDark);
+    }
+    await fetch("/api/finance/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: isDark ? "dark" : "light" }),
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     if (view === "dashboard" || view === "loans") {
@@ -219,17 +258,33 @@ export function FinanceShell() {
     setCategoryForm({ name: "", type: "expense" });
   };
 
-  const handleEditAccount = async (accountId: string) => {
-    const name = window.prompt("Account name");
-    if (!name) return;
-    const response = await fetch(`/api/finance/accounts/${accountId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (response.ok) {
+  const startEditingAccount = (account: Account) => {
+    setEditingAccountId(account.id);
+    setEditAccountForm({ name: account.name, type: account.type });
+  };
+
+  const cancelEditingAccount = () => {
+    setEditingAccountId(null);
+    setEditAccountForm({ name: "", type: "Bank" });
+  };
+
+  const handleSaveEditAccount = async (event: React.FormEvent<HTMLFormElement>, accountId: string) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`/api/finance/accounts/${accountId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editAccountForm.name, type: editAccountForm.type }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to update account");
+      }
       const updated = await response.json();
       setAccounts((current) => current.map((item) => item.id === accountId ? { ...item, ...updated } : item));
+      setEditingAccountId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update account");
     }
   };
 
@@ -247,17 +302,33 @@ export function FinanceShell() {
     }
   };
 
-  const handleEditCategory = async (categoryId: string) => {
-    const name = window.prompt("Category name");
-    if (!name) return;
-    const response = await fetch(`/api/finance/categories/${categoryId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (response.ok) {
+  const startEditingCategory = (category: Category) => {
+    setEditingCategoryId(category.id);
+    setEditCategoryForm({ name: category.name, type: category.type as TransactionType });
+  };
+
+  const cancelEditingCategory = () => {
+    setEditingCategoryId(null);
+    setEditCategoryForm({ name: "", type: "expense" });
+  };
+
+  const handleSaveEditCategory = async (event: React.FormEvent<HTMLFormElement>, categoryId: string) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`/api/finance/categories/${categoryId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editCategoryForm.name, type: editCategoryForm.type }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to update category");
+      }
       const updated = await response.json();
       setCategories((current) => current.map((item) => item.id === categoryId ? { ...item, ...updated } : item));
+      setEditingCategoryId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update category");
     }
   };
 
@@ -287,9 +358,9 @@ export function FinanceShell() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Total Balance", value: formatCurrency(summary.totalBalance), icon: Landmark },
-          { label: "Monthly Income", value: formatCurrency(summary.monthlyIncome), icon: Wallet },
-          { label: "Monthly Expenses", value: formatCurrency(summary.monthlyExpenses), icon: CreditCard },
+          { label: "Total Balance", value: formatCurrency(summary.totalBalance, currency), icon: Landmark },
+          { label: "Monthly Income", value: formatCurrency(summary.monthlyIncome, currency), icon: Wallet },
+          { label: "Monthly Expenses", value: formatCurrency(summary.monthlyExpenses, currency), icon: CreditCard },
           { label: "Savings Rate", value: `${summary.savingsRate.toFixed(1)}%`, icon: PiggyBank },
         ].map((item) => (
           <Card key={item.label}>
@@ -308,10 +379,10 @@ export function FinanceShell() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Outstanding Borrowed", value: formatCurrency(summary.outstandingBorrowed), icon: Landmark },
-          { label: "Outstanding Lent", value: formatCurrency(summary.outstandingLent), icon: Wallet },
+          { label: "Outstanding Borrowed", value: formatCurrency(summary.outstandingBorrowed, currency), icon: Landmark },
+          { label: "Outstanding Lent", value: formatCurrency(summary.outstandingLent, currency), icon: Wallet },
           { label: "Open Loans", value: String(summary.openLoansCount), icon: BriefcaseBusiness },
-          { label: "Net Invested", value: formatCurrency(summary.netInvested), icon: PiggyBank },
+          { label: "Net Invested", value: formatCurrency(summary.netInvested, currency), icon: PiggyBank },
         ].map((item) => (
           <Card key={item.label}>
             <CardContent className="flex items-center justify-between py-5">
@@ -339,7 +410,7 @@ export function FinanceShell() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                   <XAxis dataKey="month" />
                   <YAxis />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0), currency)} />
                   <Bar dataKey="income" fill="#2563eb" radius={[8, 8, 0, 0]} />
                   <Bar dataKey="expense" fill="#0f172a" radius={[8, 8, 0, 0]} />
                 </BarChart>
@@ -361,7 +432,7 @@ export function FinanceShell() {
                       <Cell key={entry.name} fill={palette[index % palette.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0), currency)} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -395,7 +466,7 @@ export function FinanceShell() {
                       </div>
                       <div className="text-right">
                         <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
-                          {positive ? "+" : "-"}{formatCurrency(transaction.amount)}
+                          {positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
                         </p>
                         <p className="text-sm text-[#7c9189]">{transaction.account}</p>
                       </div>
@@ -419,9 +490,25 @@ export function FinanceShell() {
                   <p className="text-sm text-[#7c9189]">{account.type}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold">{formatCurrency(account.balance)}</p>
-                  <Button type="button" variant="ghost" onClick={() => void handleEditAccount(account.id)}>Edit</Button>
-                  <Button type="button" variant="ghost" onClick={() => void handleDeleteAccount(account.id)}>Delete</Button>
+                  <p className="font-semibold">{formatCurrency(account.balance, currency)}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setView("accounts");
+                      startEditingAccount(account);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-rose-400 hover:text-rose-300"
+                    onClick={() => void handleDeleteAccount(account.id)}
+                  >
+                    Delete
+                  </Button>
                 </div>
               </div>
             ))}
@@ -511,7 +598,7 @@ export function FinanceShell() {
                   </div>
                   <div className="flex items-center gap-3">
                     <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
-                      {positive ? "+" : "-"}{formatCurrency(transaction.amount)}
+                      {positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
                     </p>
                     <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
                       Edit
@@ -547,17 +634,54 @@ export function FinanceShell() {
       <div className="grid gap-6 md:grid-cols-2">
         {accounts.map((account) => (
           <Card key={account.id}>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{account.name}</CardTitle>
-              <div className="flex gap-2">
-                <Button type="button" variant="ghost" onClick={() => void handleEditAccount(account.id)}>Edit</Button>
-                <Button type="button" variant="ghost" className="text-rose-400 hover:text-rose-300" onClick={() => void handleDeleteAccount(account.id)}>Delete</Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-[#7c9189]">{account.type}</p>
-              <p className="text-2xl font-semibold">{formatCurrency(account.balance)}</p>
-            </CardContent>
+            {editingAccountId === account.id ? (
+              <form onSubmit={(event) => void handleSaveEditAccount(event, account.id)} className="p-5 space-y-3">
+                <CardTitle className="text-base">Edit Account</CardTitle>
+                <div className="grid gap-2">
+                  <Input
+                    placeholder="Account name"
+                    value={editAccountForm.name}
+                    onChange={(event) => setEditAccountForm({ ...editAccountForm, name: event.target.value })}
+                    required
+                  />
+                  <Input
+                    placeholder="Account type (e.g. Bank, Wallet)"
+                    value={editAccountForm.type}
+                    onChange={(event) => setEditAccountForm({ ...editAccountForm, type: event.target.value })}
+                    required
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={cancelEditingAccount}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Save</Button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>{account.name}</CardTitle>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="ghost" onClick={() => startEditingAccount(account)}>
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-rose-400 hover:text-rose-300"
+                      onClick={() => void handleDeleteAccount(account.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-[#7c9189]">{account.type}</p>
+                  <p className="text-2xl font-semibold">{formatCurrency(account.balance, currency)}</p>
+                </CardContent>
+              </>
+            )}
           </Card>
         ))}
       </div>
@@ -584,18 +708,56 @@ export function FinanceShell() {
       <div className="grid gap-6 md:grid-cols-2">
         {categories.map((category) => (
           <Card key={category.id}>
-            <CardHeader>
-              <CardTitle>{category.name}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center justify-between">
-              <div className="inline-flex rounded-full bg-[#1b2b24] px-3 py-1 text-sm">
-                {category.type}
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="ghost" onClick={() => void handleEditCategory(category.id)}>Edit</Button>
-                <Button type="button" variant="ghost" onClick={() => void handleDeleteCategory(category.id)}>Delete</Button>
-              </div>
-            </CardContent>
+            {editingCategoryId === category.id ? (
+              <form onSubmit={(event) => void handleSaveEditCategory(event, category.id)} className="p-5 space-y-3">
+                <CardTitle className="text-base">Edit Category</CardTitle>
+                <div className="grid gap-2">
+                  <Input
+                    placeholder="Category name"
+                    value={editCategoryForm.name}
+                    onChange={(event) => setEditCategoryForm({ ...editCategoryForm, name: event.target.value })}
+                    required
+                  />
+                  <Select
+                    value={editCategoryForm.type}
+                    onChange={(event) => setEditCategoryForm({ ...editCategoryForm, type: event.target.value as TransactionType })}
+                  >
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                  </Select>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={cancelEditingCategory}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Save</Button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <CardHeader>
+                  <CardTitle>{category.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between">
+                  <div className="inline-flex rounded-full bg-[#1b2b24] px-3 py-1 text-sm">
+                    {category.type}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="ghost" onClick={() => startEditingCategory(category)}>
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-rose-400 hover:text-rose-300"
+                      onClick={() => void handleDeleteCategory(category.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </>
+            )}
           </Card>
         ))}
       </div>
@@ -611,16 +773,16 @@ export function FinanceShell() {
         <CardContent className="space-y-3">
           <div className="rounded-2xl bg-[#1b2b24] p-4">
             <p className="text-sm text-[#7c9189]">Net savings</p>
-            <p className="mt-1 text-2xl font-semibold">{formatCurrency(summary.monthlyIncome - summary.monthlyExpenses)}</p>
+            <p className="mt-1 text-2xl font-semibold">{formatCurrency(summary.monthlyIncome - summary.monthlyExpenses, currency)}</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
               <p className="text-sm text-[#7c9189]">Income</p>
-              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyIncome)}</p>
+              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyIncome, currency)}</p>
             </div>
             <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
               <p className="text-sm text-[#7c9189]">Expenses</p>
-              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyExpenses)}</p>
+              <p className="mt-1 font-semibold">{formatCurrency(summary.monthlyExpenses, currency)}</p>
             </div>
           </div>
         </CardContent>
@@ -634,7 +796,7 @@ export function FinanceShell() {
             {summary.expenseByCategory.map((entry) => (
               <div key={entry.name} className="flex items-center justify-between rounded-xl bg-[#1b2b24] p-3">
                 <span>{entry.name}</span>
-                <span className="font-semibold">{formatCurrency(entry.value)}</span>
+                <span className="font-semibold">{formatCurrency(entry.value, currency)}</span>
               </div>
             ))}
           </div>
@@ -664,16 +826,17 @@ export function FinanceShell() {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="font-medium text-white">Currency</span>
-            <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="GBP">GBP</option>
+            <Select value={currency} onChange={(event) => void handleCurrencyChange(event.target.value)}>
+              <option value="BDT">BDT (৳)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
             </Select>
           </label>
           <label className="space-y-2">
             <span className="font-medium text-white">Dark mode</span>
             <div className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-              <Switch checked={darkMode} onChange={(event) => setDarkMode(event.target.checked)} />
+              <Switch checked={darkMode} onChange={(event) => void handleThemeChange(event.target.checked)} />
               <span>{darkMode ? "Enabled" : "Disabled"}</span>
             </div>
           </label>
@@ -691,9 +854,9 @@ export function FinanceShell() {
         <header className="flex flex-col gap-4 rounded-[32px] border border-[#2f463f] bg-[#101b18]/90 p-6 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.25em] text-[#7c9189]">Personal Finance</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">The Ace Finance Hub</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">The Ace Finance</h1>
             <p className="mt-2 max-w-2xl text-sm text-[#dce5e1]">
-              A modern, scalable command center for tracking balances, transactions, categories, and reporting.
+              Track your fiances, manage your accounts, and gain insights into your spending habits with ease.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

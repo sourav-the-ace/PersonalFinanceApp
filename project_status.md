@@ -299,13 +299,11 @@ flowchart TD
 - [x] **Distinct Icons and Badges for Transaction Types**: Added `renderTransactionBadge` and `isPositiveFlow` in `features/finance/finance-shell.tsx` to render clean, color-coded badges and green/red flow formatting for all 8 transaction types across Recent Transactions and the Transactions tab.
 
 ### Phase 5: UX Polish, Settings & Quality of Life
-- [ ] **Replace `window.prompt` with Modal/Inline Edit Forms**: Provide proper modal or inline editing for accounts and categories.
-- [ ] **Persist User Settings**: Connect currency and theme to `Profile.currency` and `Profile.theme` via a dedicated profile settings API route.
-- [ ] **Add Automated Test Suite**: Add comprehensive unit/integration tests for:
-  - Account balance delta calculations (`applyBalanceDelta`).
-  - Loan outstanding calculations and repayment constraints.
-  - Investment net invested calculations and withdrawal constraints.
-  - Multi-tenant profile data isolation.
+- [x] **Replace `window.prompt` with Modal/Inline Edit Forms**: Inline card editing for accounts and categories with dedicated form controls, Save, and Cancel buttons.
+- [x] **Persist User Settings**: Created `/api/finance/settings` and wired `currency` and `theme` (with `dark` HTML class toggling) to persist directly to `Profile.currency` and `Profile.theme`.
+- [x] **Add Automated Test Suite**: Comprehensive tests added in `tests/finance-services-full.test.ts` covering balance deltas, loan repayment limits, investment profit logic, currency formatters, and multi-tenant isolation.
+- [x] **Taka Sign (৳) as Default Currency**: Updated formatter and default currency to `BDT (৳)`.
+- [x] **Complete Mock Data Removal**: Completely eradicated all mock data arrays and local storage fallbacks.
 
 ---
 
