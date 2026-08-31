@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public."Profile" (
     "userId" TEXT,
     "email" TEXT NOT NULL,
     "name" TEXT,
-    "currency" TEXT NOT NULL DEFAULT 'USD'::text,
+    "currency" TEXT NOT NULL DEFAULT 'BDT'::text,
     "theme" TEXT NOT NULL DEFAULT 'light'::text,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

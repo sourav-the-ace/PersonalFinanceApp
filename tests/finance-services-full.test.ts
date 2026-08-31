@@ -78,5 +78,6 @@ test("Finance Services Full Suite: Settings, Balance Deltas, Loan Constraints, a
     await prisma.account.deleteMany({ where: { profile: { email: testEmail } } });
     await prisma.profile.deleteMany({ where: { email: testEmail } });
     await prisma.user.deleteMany({ where: { email: testEmail } });
+    await prisma.$disconnect();
   }
 });

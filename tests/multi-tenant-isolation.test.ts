@@ -91,5 +91,6 @@ test("Multi-tenant isolation: Users cannot access or mutate each other's financi
     await prisma.category.deleteMany({ where: { profile: { email: { in: [userAEmail, userBEmail] } } } });
     await prisma.profile.deleteMany({ where: { email: { in: [userAEmail, userBEmail] } } });
     await prisma.user.deleteMany({ where: { email: { in: [userAEmail, userBEmail] } } });
+    await prisma.$disconnect();
   }
 });

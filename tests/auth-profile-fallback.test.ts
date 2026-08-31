@@ -21,5 +21,6 @@ test("ensureProfileForUser creates a usable profile for a user", async () => {
   } finally {
     await prisma.profile.deleteMany({ where: { email } });
     await prisma.user.delete({ where: { id: user.id } });
+    await prisma.$disconnect();
   }
 });

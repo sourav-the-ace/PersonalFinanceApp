@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const created = await tx.transaction.create({
         data: {
           profileId,
-          title: body.title || (body.type === "investment_in" ? "Investment Contribution" : "Investment Withdrawal"),
+          title: body.title || (body.type === "investment_in" ? "Investment Deposit" : "Investment Withdrawal"),
           amount,
           type: body.type,
           investmentId: id,

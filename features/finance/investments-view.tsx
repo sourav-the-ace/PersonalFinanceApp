@@ -214,8 +214,8 @@ export function InvestmentsView({ accounts }: InvestmentsViewProps) {
                 </div>
               ) : null}
               <Select value={txForm.type} onChange={(event) => setTxForm({ ...txForm, type: event.target.value as "investment_in" | "investment_out" })}>
-                <option value="investment_in">Investment in</option>
-                <option value="investment_out">Investment out</option>
+                <option value="investment_in">Deposit (Invest money)</option>
+                <option value="investment_out">Withdraw (Take returns / capital)</option>
               </Select>
               <Input placeholder="Title" value={txForm.title} onChange={(event) => setTxForm({ ...txForm, title: event.target.value })} required />
               <Input type="number" placeholder="Amount" value={txForm.amount} onChange={(event) => setTxForm({ ...txForm, amount: event.target.value })} required />
@@ -240,7 +240,7 @@ export function InvestmentsView({ accounts }: InvestmentsViewProps) {
                   <div className="flex items-center gap-4 text-right">
                     <div>
                       <p className="font-semibold">{formatCurrency(transaction.amount)}</p>
-                      <p className="text-sm text-[#7c9189]">{transaction.type === "investment_in" ? "Investment In" : "Investment Out"}</p>
+                      <p className="text-sm text-[#7c9189]">{transaction.type === "investment_in" ? "Deposit" : "Withdraw"}</p>
                     </div>
                     <Button
                       type="button"

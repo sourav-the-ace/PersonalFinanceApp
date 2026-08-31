@@ -40,12 +40,14 @@
 │   │       │   └── [id]/transactions/
 │   │       │       ├── route.ts             # POST loan transaction
 │   │       │       └── [transactionId]/     # PUT / DELETE loan transaction
-│   │       └── investments/
-│   │           ├── route.ts                 # GET / POST investments
-│   │           ├── [id]/route.ts            # GET / PUT investment details & status
-│   │           └── [id]/transactions/
-│   │               ├── route.ts             # POST investment transaction
-│   │               └── [transactionId]/     # DELETE investment transaction
+│   │       ├── investments/
+│   │       │   ├── route.ts                 # GET / POST investments
+│   │       │   ├── [id]/route.ts            # GET / PUT / DELETE investment details & status
+│   │       │   └── [id]/transactions/
+│   │       │       ├── route.ts             # POST investment transaction
+│   │       │       └── [transactionId]/     # PUT / DELETE investment transaction
+│   │       └── settings/
+│   │           └── route.ts                 # GET / PUT user profile settings
 │   ├── login/page.tsx                       # Login UI
 │   ├── register/page.tsx                    # Registration UI
 │   ├── layout.tsx                           # Root layout

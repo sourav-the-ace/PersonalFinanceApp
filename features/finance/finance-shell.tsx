@@ -42,9 +42,9 @@ function renderTransactionBadge(type: string) {
     case "loan_receive_repayment":
       return <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-400 font-medium">Loan Repaid</span>;
     case "investment_in":
-      return <span className="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-400 font-medium">Investment In</span>;
+      return <span className="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-400 font-medium">Deposit</span>;
     case "investment_out":
-      return <span className="inline-flex items-center rounded-full bg-teal-500/20 px-2 py-0.5 text-xs text-teal-400 font-medium">Investment Out</span>;
+      return <span className="inline-flex items-center rounded-full bg-teal-500/20 px-2 py-0.5 text-xs text-teal-400 font-medium">Withdraw</span>;
     default:
       return null;
   }
@@ -545,8 +545,8 @@ export function FinanceShell() {
               <option value="loan_repayment">Loan Repayment</option>
               <option value="loan_lend">Loan Lend</option>
               <option value="loan_receive_repayment">Loan Receive Repayment</option>
-              <option value="investment_in">Investment In</option>
-              <option value="investment_out">Investment Out</option>
+              <option value="investment_in">Investment Deposit</option>
+              <option value="investment_out">Investment Withdraw</option>
             </select>
           </div>
         </CardHeader>
