@@ -23,11 +23,13 @@ export async function applyTransfer(
   fromAccountId: string,
   toAccountId: string,
   amount: number,
+  charge: number = 0,
 ) {
-  if (amount <= 0) return;
+  if (amount <= 0 && charge <= 0) return;
+  const totalDeduction = amount + Math.max(0, charge);
   await db.account.update({
     where: { id: fromAccountId },
-    data: { balance: { decrement: amount } },
+    data: { balance: { decrement: totalDeduction } },
   });
   await db.account.update({
     where: { id: toAccountId },
@@ -40,11 +42,13 @@ export async function revertTransfer(
   fromAccountId: string,
   toAccountId: string,
   amount: number,
+  charge: number = 0,
 ) {
-  if (amount <= 0) return;
+  if (amount <= 0 && charge <= 0) return;
+  const totalDeduction = amount + Math.max(0, charge);
   await db.account.update({
     where: { id: fromAccountId },
-    data: { balance: { increment: amount } },
+    data: { balance: { increment: totalDeduction } },
   });
   await db.account.update({
     where: { id: toAccountId },

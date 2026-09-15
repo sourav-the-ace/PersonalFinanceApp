@@ -100,10 +100,10 @@
 - **`Category`**: `id`, `profileId`, `name`, `type` (income / expense).
 - **`Loan`**: `id`, `profileId`, `title`, `direction` ("borrowed" | "lent"), `counterparty`, `status` ("open" | "closed"), `notes`.
 - **`Investment`**: `id`, `profileId`, `name`, `assetType`, `institution`, `status` ("open" | "closed"), `notes`.
-- **`Transaction`**: `id`, `profileId`, `title`, `amount`, `type`, `date`, `notes`, `principalAmount`, `interestAmount`, and optional foreign keys (`categoryId`, `accountId`, `loanId`, `investmentId`).
+- **`Transaction`**: `id`, `profileId`, `title`, `amount`, `charge` (Float? default 0), `type`, `date`, `notes`, `principalAmount`, `interestAmount`, and optional foreign keys (`categoryId`, `accountId`, `toAccountId`, `loanId`, `investmentId`).
 
 ### 2.2 Core Business Logic Services (`lib/`)
-- **Balance Sync Service (`lib/balance-service.ts`)**: Applies atomic increments/decrements to account balances inside Prisma database transactions (`applyBalanceDelta`).
+- **Balance Sync Service (`lib/balance-service.ts`)**: Applies atomic increments/decrements to account balances inside Prisma database transactions (`applyBalanceDelta`). Provides atomic account-to-account transfer executions (`applyTransfer`) and rollbacks (`revertTransfer`) supporting optional transaction charges (deducting `amount + charge` from source while crediting `amount` to destination).
 - **Loan Service (`lib/loan-service.ts`)**: Calculates net outstanding loan balance (`borrowSum - principalRepaySum` or `lendSum - principalReceiveSum`) and validates that repayments do not exceed outstanding balances (`validateRepayment`).
 - **Investment Service (`lib/investment-service.ts`)**: Calculates `totalInvested`, `totalReturned`, `netInvested`, and `realizedPnL`, and validates that withdrawals do not exceed net invested capital (`validateWithdrawal`).
 - **Relation Auto-Resolution (`lib/finance-relations.ts`)**: Finds or auto-creates categories and accounts by name when ingesting transaction payloads.
@@ -309,15 +309,16 @@ flowchart TD
 - [x] **Taka Sign (৳) as Default Currency**: Updated formatter and default currency to `BDT (৳)`.
 - [x] **Complete Mock Data Removal**: Completely eradicated all mock data arrays and local storage fallbacks.
 
-### Phase 6: Account-to-Account Transfers ✅ COMPLETED (2026-09-15)
-- [x] **Database Schema Evolution**: Added `toAccountId` foreign key and relation on `Transaction` in `prisma/schema.prisma` and live Supabase PostgreSQL schema (`schema.db`).
-- [x] **Atomic Balance Updates & Reversals**: Implemented `applyTransfer` and `revertTransfer` in `lib/balance-service.ts`, guaranteeing source account decrement and destination account increment atomically inside Prisma transactions.
-- [x] **Transfers API**: Created `/api/finance/transfers` with input validation (source !== destination, positive amounts, sufficient balance check, and multi-tenant isolation).
-- [x] **Delete & Edit Handlers**: Updated `app/api/finance/[id]/route.ts` so deleting or updating a transfer cleanly rolls back and updates both account balances.
+### Phase 6: Account-to-Account Transfers & UX Polish ✅ COMPLETED (2026-09-15)
+- [x] **Database Schema Evolution**: Added `toAccountId` foreign key and `charge Float? @default(0)` column to `Transaction` in `prisma/schema.prisma`, live Supabase PostgreSQL schema, and `schema.db`.
+- [x] **Atomic Balance Updates & Reversals**: Implemented `applyTransfer` and `revertTransfer` in `lib/balance-service.ts`, guaranteeing source account decrement (`-(amount + charge)`) and destination account increment (`+amount`) atomically inside Prisma transactions.
+- [x] **Transfers API**: Created `/api/finance/transfers` with input validation (source !== destination, positive amounts, sufficient balance check for `amount + charge`, and multi-tenant isolation).
+- [x] **Transfer Charges & Expenses**: Tracked transfer fees as user expenses in dashboard aggregates (`buildDashboardSummary` and `buildDynamicMonthlyChart`), preserving capital neutrality for transfer principals while accurately reflecting fee expenditure.
+- [x] **Delete & Edit Handlers**: Updated `app/api/finance/[id]/route.ts` so deleting or updating a transfer cleanly rolls back and updates both account balances including charge refunds.
 - [x] **Account Deletion Safety**: Updated `app/api/finance/accounts/[id]/route.ts` to check both `accountId` and `toAccountId` before deleting an account.
-- [x] **UI Transfer Form & Quick Actions**: Added dedicated "Transfer between accounts" card in the Accounts tab, quick "Transfer" buttons on each account card and overview accounts list, and transfer filter option and cyan badge in Transactions.
-- [x] **Dashboard Neutrality**: Verified transfers do not inflate Monthly Income or Monthly Expense metrics, while Net Worth is preserved.
-- [x] **Automated Test Suite**: Added `tests/transfers.test.ts` covering balance updates, rollback on deletion, constraints, search matching, and multi-tenant security.
+- [x] **Transaction Insert Form Empty Amount Fix**: Updated amount field in transaction form (`emptyTransactionForm.amount: ""`) with clean `0.00` placeholder, eliminating the stuck `0` behavior.
+- [x] **UI Transfer Form & Quick Actions**: Added dedicated "Transfer between accounts" card in the Accounts tab with optional Charge / Fee input, live total deduction calculation preview, quick "Transfer" buttons on each account card and overview accounts list, and transfer filter option and cyan badge in Transactions.
+- [x] **Automated Test Suite**: Added `tests/transfers.test.ts` covering balance updates, charge deductions, rollback on deletion, constraints, search matching, and multi-tenant security.
 
 ---
 

@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS public."Transaction" (
     "profileId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "amount" DOUBLE PRECISION NOT NULL,
+    "charge" DOUBLE PRECISION DEFAULT 0,
     "type" TEXT NOT NULL,
     "categoryId" TEXT,
     "accountId" TEXT,

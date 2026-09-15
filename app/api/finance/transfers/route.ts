@@ -11,6 +11,8 @@ export async function POST(request: Request) {
     const { fromAccountId, toAccountId, date, notes } = body;
     const amount = Number(body.amount);
 
+    const charge = Number(body.charge ?? 0);
+
     if (!fromAccountId || !toAccountId) {
       return NextResponse.json({ error: "Source and destination accounts are required" }, { status: 400 });
     }
@@ -21,6 +23,10 @@ export async function POST(request: Request) {
 
     if (!amount || isNaN(amount) || amount <= 0) {
       return NextResponse.json({ error: "Transfer amount must be greater than zero" }, { status: 400 });
+    }
+
+    if (isNaN(charge) || charge < 0) {
+      return NextResponse.json({ error: "Transfer charge cannot be negative" }, { status: 400 });
     }
 
     if (!date) {
@@ -41,9 +47,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Destination account not found" }, { status: 404 });
     }
 
-    if (fromAccount.balance < amount) {
+    const totalRequired = amount + charge;
+    if (fromAccount.balance < totalRequired) {
       return NextResponse.json({
-        error: `Insufficient balance in ${fromAccount.name}. Available: ${fromAccount.balance}, requested: ${amount}`,
+        error: `Insufficient balance in ${fromAccount.name}. Available: ${fromAccount.balance}, requested: ${amount}${charge > 0 ? ` + ${charge} charge = ${totalRequired}` : ""}`,
       }, { status: 400 });
     }
 
@@ -51,13 +58,14 @@ export async function POST(request: Request) {
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : defaultTitle;
 
     const transaction = await prisma.$transaction(async (tx) => {
-      await applyTransfer(tx, fromAccountId, toAccountId, amount);
+      await applyTransfer(tx, fromAccountId, toAccountId, amount, charge);
 
       const created = await tx.transaction.create({
         data: {
           profileId,
           title,
           amount,
+          charge,
           type: "transfer",
           accountId: fromAccountId,
           toAccountId,

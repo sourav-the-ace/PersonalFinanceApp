@@ -77,6 +77,7 @@ export function FinanceShell() {
     fromAccountId: "",
     toAccountId: "",
     amount: "",
+    charge: "",
     date: new Date().toISOString().slice(0, 10),
     notes: "",
   });
@@ -223,6 +224,7 @@ export function FinanceShell() {
     event.preventDefault();
     setTransferError(null);
     const amount = Number(transferForm.amount);
+    const charge = transferForm.charge ? Number(transferForm.charge) : 0;
     if (!transferForm.fromAccountId || !transferForm.toAccountId) {
       setTransferError("Please select both source and destination accounts.");
       return;
@@ -235,9 +237,16 @@ export function FinanceShell() {
       setTransferError("Transfer amount must be greater than zero.");
       return;
     }
+    if (isNaN(charge) || charge < 0) {
+      setTransferError("Transfer charge cannot be negative.");
+      return;
+    }
     const fromAcc = accounts.find((a) => a.id === transferForm.fromAccountId);
-    if (fromAcc && fromAcc.balance < amount) {
-      setTransferError(`Insufficient balance in ${fromAcc.name} (${formatCurrency(fromAcc.balance, currency)} available).`);
+    const totalDeduction = amount + charge;
+    if (fromAcc && fromAcc.balance < totalDeduction) {
+      setTransferError(
+        `Insufficient balance in ${fromAcc.name} (${formatCurrency(fromAcc.balance, currency)} available, requested ${formatCurrency(amount, currency)}${charge > 0 ? ` + ${formatCurrency(charge, currency)} charge` : ""}).`
+      );
       return;
     }
 
@@ -247,6 +256,7 @@ export function FinanceShell() {
         fromAccountId: transferForm.fromAccountId,
         toAccountId: transferForm.toAccountId,
         amount,
+        charge,
         date: transferForm.date,
         notes: transferForm.notes || undefined,
       });
@@ -255,7 +265,7 @@ export function FinanceShell() {
       setAccounts((current) =>
         current.map((acc) => {
           if (acc.id === transferForm.fromAccountId) {
-            return { ...acc, balance: acc.balance - amount };
+            return { ...acc, balance: acc.balance - totalDeduction };
           }
           if (acc.id === transferForm.toAccountId) {
             return { ...acc, balance: acc.balance + amount };
@@ -268,6 +278,7 @@ export function FinanceShell() {
         fromAccountId: "",
         toAccountId: "",
         amount: "",
+        charge: "",
         date: new Date().toISOString().slice(0, 10),
         notes: "",
       });
@@ -296,10 +307,11 @@ export function FinanceShell() {
     const target = transactions.find((item) => item.id === id);
     setTransactions((current) => current.filter((item) => item.id !== id));
     if (target && target.type === "transfer") {
+      const charge = target.charge ?? 0;
       setAccounts((current) =>
         current.map((acc) => {
           if (acc.name === target.account || acc.id === target.accountId) {
-            return { ...acc, balance: acc.balance + target.amount };
+            return { ...acc, balance: acc.balance + target.amount + charge };
           }
           if (acc.name === target.toAccount || acc.id === target.toAccountId) {
             return { ...acc, balance: acc.balance - target.amount };
@@ -567,6 +579,9 @@ export function FinanceShell() {
                           {isTransfer && transaction.toAccount
                             ? `${transaction.account} ➔ ${transaction.toAccount}`
                             : (transaction.category || transaction.account)} • {transaction.date}
+                          {isTransfer && transaction.charge && transaction.charge > 0 ? (
+                            <span className="text-amber-400"> (Fee: {formatCurrency(transaction.charge, currency)})</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="text-right">
@@ -668,7 +683,15 @@ export function FinanceShell() {
         <CardContent>
           <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-2 lg:grid-cols-4">
             <Input placeholder="Title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
-            <Input type="number" placeholder="Amount" value={form.amount} onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })} required />
+            <Input
+              type="number"
+              step="any"
+              min="0.01"
+              placeholder="0.00"
+              value={form.amount}
+              onChange={(event) => setForm({ ...form, amount: event.target.value })}
+              required
+            />
             <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TransactionType })}>
               <option value="expense">Expense</option>
               <option value="income">Income</option>
@@ -718,6 +741,9 @@ export function FinanceShell() {
                         </>
                       )}
                       {transaction.date}
+                      {isTransfer && transaction.charge && transaction.charge > 0 ? (
+                        <span className="text-amber-400 font-normal"> (Fee: {formatCurrency(transaction.charge, currency)})</span>
+                      ) : null}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -800,7 +826,7 @@ export function FinanceShell() {
                   </Select>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <label className="text-xs text-[#7c9189] mb-1 block">Amount</label>
                   <Input
@@ -814,6 +840,17 @@ export function FinanceShell() {
                   />
                 </div>
                 <div>
+                  <label className="text-xs text-[#7c9189] mb-1 block">Charge / Fee (optional)</label>
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0.00"
+                    value={transferForm.charge}
+                    onChange={(event) => setTransferForm({ ...transferForm, charge: event.target.value })}
+                  />
+                </div>
+                <div>
                   <label className="text-xs text-[#7c9189] mb-1 block">Date</label>
                   <Input
                     type="date"
@@ -823,6 +860,15 @@ export function FinanceShell() {
                   />
                 </div>
               </div>
+              {Number(transferForm.amount) > 0 && (
+                <p className="text-xs text-[#7c9189]">
+                  Total deducted from source:{" "}
+                  <span className="font-semibold text-rose-400">
+                    {formatCurrency(Number(transferForm.amount) + (Number(transferForm.charge) || 0), currency)}
+                  </span>
+                  {Number(transferForm.charge) > 0 ? ` (${formatCurrency(Number(transferForm.amount), currency)} transfer + ${formatCurrency(Number(transferForm.charge), currency)} fee)` : ""}
+                </p>
+              )}
               <Input
                 placeholder="Notes (optional, e.g. Monthly savings contribution)"
                 value={transferForm.notes}

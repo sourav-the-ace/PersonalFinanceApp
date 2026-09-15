@@ -2,7 +2,7 @@ import type { Transaction, TransactionType } from "@/types/finance";
 
 export const emptyTransactionForm = {
   title: "",
-  amount: 0,
+  amount: "" as string | number,
   type: "expense" as TransactionType,
   category: "",
   account: "",
@@ -13,14 +13,14 @@ export const emptyTransactionForm = {
 };
 
 export function createTransactionFromForm(
-  form: typeof emptyTransactionForm,
+  form: typeof emptyTransactionForm | (Omit<typeof emptyTransactionForm, "amount"> & { amount: number | string }),
   categoryName = form.category,
   accountName = form.account,
 ): Transaction {
   return {
     id: `tx-${Date.now()}`,
     title: form.title,
-    amount: Number(form.amount),
+    amount: Number(form.amount) || 0,
     type: form.type,
     category: categoryName,
     account: accountName,

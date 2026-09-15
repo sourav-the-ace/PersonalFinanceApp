@@ -122,12 +122,54 @@ test("Transfers Test Suite: balance updates, reversals, dashboard neutrality, an
     assert.equal(revertedA.balance, 50000, "Source account should be restored to original balance");
     assert.equal(revertedB.balance, 10000, "Destination account should be restored to original balance");
 
-    // 7. Test Account delete protection with toAccountId
+    // 7. Test Transfer with Charge (Fee)
+    const chargedTransferAmount = 10000;
+    const transferCharge = 50;
+    await prisma.$transaction(async (tx) => {
+      await applyTransfer(tx, accA.id, accB.id, chargedTransferAmount, transferCharge);
+    });
+
+    const chargedA = await prisma.account.findUniqueOrThrow({ where: { id: accA.id } });
+    const chargedB = await prisma.account.findUniqueOrThrow({ where: { id: accB.id } });
+
+    assert.equal(chargedA.balance, 50000 - (chargedTransferAmount + transferCharge), "Source account must be deducted amount + charge");
+    assert.equal(chargedB.balance, 10000 + chargedTransferAmount, "Destination account must receive only the transfer amount without charge");
+
+    // Revert transfer with charge
+    await prisma.$transaction(async (tx) => {
+      await revertTransfer(tx, accA.id, accB.id, chargedTransferAmount, transferCharge);
+    });
+
+    const restoredA = await prisma.account.findUniqueOrThrow({ where: { id: accA.id } });
+    const restoredB = await prisma.account.findUniqueOrThrow({ where: { id: accB.id } });
+
+    assert.equal(restoredA.balance, 50000, "Source account balance restored with charge refunded");
+    assert.equal(restoredB.balance, 10000, "Destination account balance restored");
+
+    // 8. Test Dashboard Expense Tracking for Transfer Fee
+    const chargedTx: Transaction = {
+      id: `tx-charged-${Date.now()}`,
+      title: "Transfer with fee",
+      amount: 10000,
+      charge: 50,
+      type: "transfer",
+      category: "",
+      account: "EBL Checking",
+      toAccount: "IBBL Savings",
+      date: "2026-09-15",
+    };
+
+    const chargedSummary = buildDashboardSummary([chargedTx], [restoredA, restoredB], "2026-09");
+    assert.equal(chargedSummary.monthlyExpenses, 50, "Transfer charge must be included in monthly expenses");
+    assert.equal(chargedSummary.monthlyIncome, 0, "Transfer does not count as income");
+
+    // 9. Test Account delete protection with toAccountId
     const newTx = await prisma.transaction.create({
       data: {
         profileId: profile.id,
         title: "Test transfer protection",
         amount: 100,
+        charge: 5,
         type: "transfer",
         accountId: accA.id,
         toAccountId: accB.id,

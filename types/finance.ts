@@ -8,6 +8,7 @@ export interface Transaction {
   id: string;
   title: string;
   amount: number;
+  charge?: number;
   type: TransactionType;
   category: string;
   account: string;

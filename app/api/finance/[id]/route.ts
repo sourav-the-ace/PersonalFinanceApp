@@ -15,6 +15,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const nextAmount = Number(body.amount ?? existing.amount);
+    const nextCharge = body.charge !== undefined ? Number(body.charge) : (existing.charge ?? 0);
     const nextType = body.type ?? existing.type;
     const nextDate = body.date ?? existing.date;
     const nextNotes = body.notes ?? existing.notes;
@@ -24,6 +25,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const updateData: Record<string, unknown> = {
       title: body.title ?? existing.title,
       amount: nextAmount,
+      charge: nextCharge,
       type: nextType,
       date: nextDate,
       notes: nextNotes ?? null,
@@ -59,7 +61,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const transaction = await prisma.$transaction(async (tx) => {
       if (existing.type === "transfer") {
         if (existing.accountId && existing.toAccountId) {
-          await revertTransfer(tx, existing.accountId, existing.toAccountId, existing.amount);
+          await revertTransfer(tx, existing.accountId, existing.toAccountId, existing.amount, existing.charge ?? 0);
         }
         const updated = await tx.transaction.update({
           where: { id },
@@ -69,7 +71,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const targetAccountId = body.accountId ?? existing.accountId;
         const targetToAccountId = body.toAccountId ?? existing.toAccountId;
         if (targetAccountId && targetToAccountId) {
-          await applyTransfer(tx, targetAccountId, targetToAccountId, nextAmount);
+          await applyTransfer(tx, targetAccountId, targetToAccountId, nextAmount, nextCharge);
         }
         return updated;
       } else {
@@ -111,7 +113,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     await prisma.$transaction(async (tx) => {
       if (existing.type === "transfer") {
         if (existing.accountId && existing.toAccountId) {
-          await revertTransfer(tx, existing.accountId, existing.toAccountId, existing.amount);
+          await revertTransfer(tx, existing.accountId, existing.toAccountId, existing.amount, existing.charge ?? 0);
         }
       } else {
         const delta = getTransactionBalanceDelta(existing.type, existing.amount);

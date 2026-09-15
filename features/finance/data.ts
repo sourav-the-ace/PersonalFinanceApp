@@ -66,6 +66,8 @@ export function buildDynamicMonthlyChart(
       entry.income += tx.type === "loan_receive_repayment" ? (tx.interestAmount ?? 0) : tx.amount;
     } else if (tx.type === "expense" || tx.type === "loan_repayment") {
       entry.expense += tx.type === "loan_repayment" ? (tx.interestAmount ?? 0) : tx.amount;
+    } else if (tx.type === "transfer" && (tx.charge ?? 0) > 0) {
+      entry.expense += tx.charge ?? 0;
     }
   }
 
@@ -91,8 +93,12 @@ export function buildDashboardSummary(
     .filter((item) => item.type === "income" || item.type === "loan_receive_repayment")
     .reduce((sum, item) => sum + (item.type === "loan_receive_repayment" ? (item.interestAmount ?? 0) : item.amount), 0);
   const monthlyExpenses = filteredTransactions
-    .filter((item) => item.type === "expense" || item.type === "loan_repayment")
-    .reduce((sum, item) => sum + (item.type === "loan_repayment" ? (item.interestAmount ?? 0) : item.amount), 0);
+    .reduce((sum, item) => {
+      if (item.type === "expense") return sum + item.amount;
+      if (item.type === "loan_repayment") return sum + (item.interestAmount ?? 0);
+      if (item.type === "transfer") return sum + (item.charge ?? 0);
+      return sum;
+    }, 0);
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
   const savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0;
 
