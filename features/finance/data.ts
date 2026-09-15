@@ -20,7 +20,7 @@ export function filterTransactionsBySearch(
   filter: TransactionType | "all",
 ) {
   return transactions.filter((transaction) => {
-    const matchesSearch = `${transaction.title} ${transaction.category} ${transaction.account}`
+    const matchesSearch = `${transaction.title} ${transaction.category} ${transaction.account} ${transaction.toAccount ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase());
     const matchesFilter = filter === "all" || transaction.type === filter;

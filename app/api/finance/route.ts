@@ -7,7 +7,7 @@ import { getSessionProfile } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
 type TransactionWithRelations = Prisma.TransactionGetPayload<{
-  include: { category: true; account: true };
+  include: { category: true; account: true; toAccount: true };
 }>;
 
 export async function GET() {
@@ -20,7 +20,9 @@ export async function GET() {
           include: {
             category: true,
             account: true,
+            toAccount: true,
           },
+          orderBy: { date: "desc" },
         },
         accounts: true,
         categories: true,
@@ -36,6 +38,7 @@ export async function GET() {
         ...transaction,
         category: transaction.category?.name ?? "",
         account: transaction.account?.name ?? "",
+        toAccount: transaction.toAccount?.name ?? "",
       })),
       accounts: fullProfile.accounts,
       categories: fullProfile.categories,

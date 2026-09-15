@@ -34,7 +34,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
-    const transactionCount = await prisma.transaction.count({ where: { accountId: id } });
+    const transactionCount = await prisma.transaction.count({
+      where: {
+        OR: [{ accountId: id }, { toAccountId: id }],
+      },
+    });
     if (transactionCount > 0 || account.balance !== 0) {
       return NextResponse.json({ error: "Account has activity and cannot be deleted" }, { status: 400 });
     }

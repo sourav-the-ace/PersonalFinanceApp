@@ -1,6 +1,6 @@
 # Project Status & Gap Analysis: The Ace Finance Hub (Personal Finance App)
 
-**Last Updated:** August 31, 2026  
+**Last Updated:** September 15, 2026  
 **Document Purpose:** This document provides a complete register of the current state of the application, an architectural overview, an exhaustive gap analysis (bugs, missing features, security vulnerabilities), and an actionable, prioritized roadmap for any engineer picking up the project.
 
 ---
@@ -46,8 +46,10 @@
 │   │       │   └── [id]/transactions/
 │   │       │       ├── route.ts             # POST investment transaction
 │   │       │       └── [transactionId]/     # PUT / DELETE investment transaction
-│   │       └── settings/
-│   │           └── route.ts                 # GET / PUT user profile settings
+│   │       ├── settings/
+│   │       │   └── route.ts                 # GET / PUT user profile settings
+│   │       └── transfers/
+│   │           └── route.ts                 # POST account-to-account transfer
 │   ├── login/page.tsx                       # Login UI
 │   ├── register/page.tsx                    # Registration UI
 │   ├── layout.tsx                           # Root layout
@@ -306,6 +308,16 @@ flowchart TD
 - [x] **Add Automated Test Suite**: Comprehensive tests added in `tests/finance-services-full.test.ts` covering balance deltas, loan repayment limits, investment profit logic, currency formatters, and multi-tenant isolation.
 - [x] **Taka Sign (৳) as Default Currency**: Updated formatter and default currency to `BDT (৳)`.
 - [x] **Complete Mock Data Removal**: Completely eradicated all mock data arrays and local storage fallbacks.
+
+### Phase 6: Account-to-Account Transfers ✅ COMPLETED (2026-09-15)
+- [x] **Database Schema Evolution**: Added `toAccountId` foreign key and relation on `Transaction` in `prisma/schema.prisma` and live Supabase PostgreSQL schema (`schema.db`).
+- [x] **Atomic Balance Updates & Reversals**: Implemented `applyTransfer` and `revertTransfer` in `lib/balance-service.ts`, guaranteeing source account decrement and destination account increment atomically inside Prisma transactions.
+- [x] **Transfers API**: Created `/api/finance/transfers` with input validation (source !== destination, positive amounts, sufficient balance check, and multi-tenant isolation).
+- [x] **Delete & Edit Handlers**: Updated `app/api/finance/[id]/route.ts` so deleting or updating a transfer cleanly rolls back and updates both account balances.
+- [x] **Account Deletion Safety**: Updated `app/api/finance/accounts/[id]/route.ts` to check both `accountId` and `toAccountId` before deleting an account.
+- [x] **UI Transfer Form & Quick Actions**: Added dedicated "Transfer between accounts" card in the Accounts tab, quick "Transfer" buttons on each account card and overview accounts list, and transfer filter option and cyan badge in Transactions.
+- [x] **Dashboard Neutrality**: Verified transfers do not inflate Monthly Income or Monthly Expense metrics, while Net Worth is preserved.
+- [x] **Automated Test Suite**: Added `tests/transfers.test.ts` covering balance updates, rollback on deletion, constraints, search matching, and multi-tenant security.
 
 ---
 

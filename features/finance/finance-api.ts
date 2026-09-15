@@ -53,3 +53,25 @@ export async function deleteFinanceTransaction(id: string) {
 
   return response.json();
 }
+
+export async function createTransfer(payload: {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  date: string;
+  title?: string;
+  notes?: string;
+}) {
+  const response = await fetch("/api/finance/transfers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to complete transfer");
+  }
+
+  return response.json() as Promise<Transaction>;
+}

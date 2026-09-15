@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS public."Transaction" (
     "type" TEXT NOT NULL,
     "categoryId" TEXT,
     "accountId" TEXT,
+    "toAccountId" TEXT,
     "loanId" TEXT,
     "investmentId" TEXT,
     "principalAmount" DOUBLE PRECISION,
@@ -164,6 +165,11 @@ ALTER TABLE public."Transaction"
 ALTER TABLE public."Transaction"
     ADD CONSTRAINT "Transaction_accountId_fkey"
     FOREIGN KEY ("accountId") REFERENCES public."Account" ("id")
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+ALTER TABLE public."Transaction"
+    ADD CONSTRAINT "Transaction_toAccountId_fkey"
+    FOREIGN KEY ("toAccountId") REFERENCES public."Account" ("id")
     ON UPDATE CASCADE ON DELETE SET NULL;
 
 ALTER TABLE public."Transaction"

@@ -2,7 +2,7 @@ export type LoanDirection = "borrowed" | "lent";
 export type EntityStatus = "open" | "closed";
 export type LoanTransactionType = "loan_borrow" | "loan_repayment" | "loan_lend" | "loan_receive_repayment";
 export type InvestmentTransactionType = "investment_in" | "investment_out";
-export type TransactionType = "income" | "expense" | LoanTransactionType | InvestmentTransactionType;
+export type TransactionType = "income" | "expense" | "transfer" | LoanTransactionType | InvestmentTransactionType;
 
 export interface Transaction {
   id: string;
@@ -11,6 +11,10 @@ export interface Transaction {
   type: TransactionType;
   category: string;
   account: string;
+  accountId?: string;
+  categoryId?: string;
+  toAccount?: string;
+  toAccountId?: string;
   date: string;
   notes?: string;
   loanId?: string;

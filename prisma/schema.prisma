@@ -44,8 +44,9 @@ model Account {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  profile           Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions      Transaction[] @relation("AccountTransactions")
+  receivedTransfers Transaction[] @relation("TransferToAccount")
 }
 
 model Category {
@@ -98,6 +99,7 @@ model Transaction {
   type            String
   categoryId      String?
   accountId       String?
+  toAccountId     String?
   loanId          String?
   investmentId    String?
   principalAmount Float?
@@ -109,7 +111,8 @@ model Transaction {
 
   profile     Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
   category    Category?    @relation(fields: [categoryId], references: [id])
-  account     Account?     @relation(fields: [accountId], references: [id])
+  account     Account?     @relation("AccountTransactions", fields: [accountId], references: [id])
+  toAccount   Account?     @relation("TransferToAccount", fields: [toAccountId], references: [id])
   loan        Loan?        @relation(fields: [loanId], references: [id])
   investment  Investment?  @relation(fields: [investmentId], references: [id])
 }

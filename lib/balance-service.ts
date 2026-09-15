@@ -18,6 +18,40 @@ export function directionalDelta(amount: number, direction: "in" | "out") {
   return direction === "in" ? amount : -amount;
 }
 
+export async function applyTransfer(
+  db: TxClient,
+  fromAccountId: string,
+  toAccountId: string,
+  amount: number,
+) {
+  if (amount <= 0) return;
+  await db.account.update({
+    where: { id: fromAccountId },
+    data: { balance: { decrement: amount } },
+  });
+  await db.account.update({
+    where: { id: toAccountId },
+    data: { balance: { increment: amount } },
+  });
+}
+
+export async function revertTransfer(
+  db: TxClient,
+  fromAccountId: string,
+  toAccountId: string,
+  amount: number,
+) {
+  if (amount <= 0) return;
+  await db.account.update({
+    where: { id: fromAccountId },
+    data: { balance: { increment: amount } },
+  });
+  await db.account.update({
+    where: { id: toAccountId },
+    data: { balance: { decrement: amount } },
+  });
+}
+
 export function getTransactionBalanceDelta(type: string, amount: number): number {
   switch (type) {
     case "income":

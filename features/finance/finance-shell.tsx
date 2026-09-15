@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
-import { BriefcaseBusiness, CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
+import { ArrowRightLeft, BriefcaseBusiness, CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import { downloadTransactionsCsv } from "@/features/finance/export";
 import { EmptyState } from "@/features/finance/empty-state";
 import { createAccount, createCategory, fetchAccounts, fetchCategories } from "@/features/finance/finance-crud";
 import { useRouter } from "next/navigation";
-import { createFinanceTransaction, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
+import { createFinanceTransaction, createTransfer, deleteFinanceTransaction, fetchFinanceData, updateFinanceTransaction } from "@/features/finance/finance-api";
 import { fetchLoans } from "@/features/finance/loan-api";
 import { fetchInvestments } from "@/features/finance/investment-api";
 import { LoansView } from "@/features/finance/loans-view";
@@ -33,6 +33,8 @@ function isPositiveFlow(type: string): boolean {
 
 function renderTransactionBadge(type: string) {
   switch (type) {
+    case "transfer":
+      return <span className="inline-flex items-center rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-400 font-medium">Transfer</span>;
     case "loan_borrow":
       return <span className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400 font-medium">Loan Borrow</span>;
     case "loan_lend":
@@ -71,6 +73,15 @@ export function FinanceShell() {
   const [editAccountForm, setEditAccountForm] = useState({ name: "", type: "Bank" });
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editCategoryForm, setEditCategoryForm] = useState<{ name: string; type: TransactionType }>({ name: "", type: "expense" });
+  const [transferForm, setTransferForm] = useState({
+    fromAccountId: "",
+    toAccountId: "",
+    amount: "",
+    date: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [isTransferring, setIsTransferring] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
@@ -208,10 +219,99 @@ export function FinanceShell() {
     setForm({ ...emptyTransactionForm, date: new Date().toISOString().slice(0, 10) });
   };
 
+  const handleTransfer = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setTransferError(null);
+    const amount = Number(transferForm.amount);
+    if (!transferForm.fromAccountId || !transferForm.toAccountId) {
+      setTransferError("Please select both source and destination accounts.");
+      return;
+    }
+    if (transferForm.fromAccountId === transferForm.toAccountId) {
+      setTransferError("Source and destination accounts must be different.");
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      setTransferError("Transfer amount must be greater than zero.");
+      return;
+    }
+    const fromAcc = accounts.find((a) => a.id === transferForm.fromAccountId);
+    if (fromAcc && fromAcc.balance < amount) {
+      setTransferError(`Insufficient balance in ${fromAcc.name} (${formatCurrency(fromAcc.balance, currency)} available).`);
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const created = await createTransfer({
+        fromAccountId: transferForm.fromAccountId,
+        toAccountId: transferForm.toAccountId,
+        amount,
+        date: transferForm.date,
+        notes: transferForm.notes || undefined,
+      });
+
+      setTransactions((current) => [created, ...current]);
+      setAccounts((current) =>
+        current.map((acc) => {
+          if (acc.id === transferForm.fromAccountId) {
+            return { ...acc, balance: acc.balance - amount };
+          }
+          if (acc.id === transferForm.toAccountId) {
+            return { ...acc, balance: acc.balance + amount };
+          }
+          return acc;
+        })
+      );
+
+      setTransferForm({
+        fromAccountId: "",
+        toAccountId: "",
+        amount: "",
+        date: new Date().toISOString().slice(0, 10),
+        notes: "",
+      });
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : "Failed to transfer funds");
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const initiateTransferFromAccount = (accountId: string) => {
+    setView("accounts");
+    setTransferForm((prev) => ({
+      ...prev,
+      fromAccountId: accountId,
+    }));
+    setTimeout(() => {
+      const transferCard = document.getElementById("transfer-funds-card");
+      if (transferCard) {
+        transferCard.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 100);
+  };
+
   const removeTransaction = async (id: string) => {
+    const target = transactions.find((item) => item.id === id);
     setTransactions((current) => current.filter((item) => item.id !== id));
+    if (target && target.type === "transfer") {
+      setAccounts((current) =>
+        current.map((acc) => {
+          if (acc.name === target.account || acc.id === target.accountId) {
+            return { ...acc, balance: acc.balance + target.amount };
+          }
+          if (acc.name === target.toAccount || acc.id === target.toAccountId) {
+            return { ...acc, balance: acc.balance - target.amount };
+          }
+          return acc;
+        })
+      );
+    }
     try {
       await deleteFinanceTransaction(id);
+      const data = await fetchFinanceData();
+      if (data.accounts) setAccounts(data.accounts);
     } catch {
       // Keep the local fallback behavior if the API is unavailable.
     }
@@ -454,6 +554,7 @@ export function FinanceShell() {
             <CardContent>
               <div className="space-y-4">
                 {summary.recentTransactions.map((transaction) => {
+                  const isTransfer = transaction.type === "transfer";
                   const positive = isPositiveFlow(transaction.type);
                   return (
                     <div key={transaction.id} className="flex items-center justify-between rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
@@ -462,13 +563,19 @@ export function FinanceShell() {
                           <p className="font-medium">{transaction.title}</p>
                           {renderTransactionBadge(transaction.type)}
                         </div>
-                        <p className="text-sm text-[#7c9189]">{transaction.category || transaction.account} • {transaction.date}</p>
+                        <p className="text-sm text-[#7c9189]">
+                          {isTransfer && transaction.toAccount
+                            ? `${transaction.account} ➔ ${transaction.toAccount}`
+                            : (transaction.category || transaction.account)} • {transaction.date}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
-                          {positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
+                        <p className={isTransfer ? "font-semibold text-cyan-400" : positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
+                          {isTransfer ? "" : positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
                         </p>
-                        <p className="text-sm text-[#7c9189]">{transaction.account}</p>
+                        <p className="text-sm text-[#7c9189]">
+                          {isTransfer && transaction.toAccount ? `${transaction.account} ➔ ${transaction.toAccount}` : transaction.account}
+                        </p>
                       </div>
                     </div>
                   );
@@ -491,6 +598,13 @@ export function FinanceShell() {
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="font-semibold">{formatCurrency(account.balance, currency)}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => initiateTransferFromAccount(account.id)}
+                  >
+                    Transfer
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -547,6 +661,7 @@ export function FinanceShell() {
               <option value="loan_receive_repayment">Loan Receive Repayment</option>
               <option value="investment_in">Investment Deposit</option>
               <option value="investment_out">Investment Withdraw</option>
+              <option value="transfer">Transfer</option>
             </select>
           </div>
         </CardHeader>
@@ -584,6 +699,7 @@ export function FinanceShell() {
 
           <div className="space-y-3">
             {filteredTransactions.map((transaction) => {
+              const isTransfer = transaction.type === "transfer";
               const positive = isPositiveFlow(transaction.type);
               return (
                 <div key={transaction.id} className="flex flex-col gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
@@ -593,12 +709,20 @@ export function FinanceShell() {
                       {renderTransactionBadge(transaction.type)}
                     </div>
                     <p className="text-sm text-[#7c9189]">
-                      {transaction.category ? `${transaction.category} • ` : ""}{transaction.account ? `${transaction.account} • ` : ""}{transaction.date}
+                      {isTransfer && transaction.toAccount ? (
+                        <span className="font-medium text-[#a7b5af]">{transaction.account} ➔ {transaction.toAccount} • </span>
+                      ) : (
+                        <>
+                          {transaction.category ? `${transaction.category} • ` : ""}
+                          {transaction.account ? `${transaction.account} • ` : ""}
+                        </>
+                      )}
+                      {transaction.date}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <p className={positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
-                      {positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
+                    <p className={isTransfer ? "font-semibold text-cyan-400" : positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
+                      {isTransfer ? "" : positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
                     </p>
                     <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
                       Edit
@@ -618,19 +742,103 @@ export function FinanceShell() {
 
   const renderAccounts = () => (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Add account</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreateAccount} className="grid gap-3 md:grid-cols-3">
-            <Input placeholder="Name" value={accountForm.name} onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })} required />
-            <Input placeholder="Type" value={accountForm.type} onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })} required />
-            <Input type="number" placeholder="Balance" value={accountForm.balance} onChange={(event) => setAccountForm({ ...accountForm, balance: Number(event.target.value) })} required />
-            <Button type="submit" className="md:col-span-3">Create account</Button>
-          </form>
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Add account</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateAccount} className="grid gap-3 sm:grid-cols-3">
+              <Input placeholder="Name" value={accountForm.name} onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })} required />
+              <Input placeholder="Type" value={accountForm.type} onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })} required />
+              <Input type="number" placeholder="Balance" value={accountForm.balance} onChange={(event) => setAccountForm({ ...accountForm, balance: Number(event.target.value) })} required />
+              <Button type="submit" className="sm:col-span-3">Create account</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card id="transfer-funds-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-cyan-400" />
+              Transfer between accounts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleTransfer} className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs text-[#7c9189] mb-1 block">From Account</label>
+                  <Select
+                    value={transferForm.fromAccountId}
+                    onChange={(event) => setTransferForm({ ...transferForm, fromAccountId: event.target.value })}
+                    required
+                  >
+                    <option value="">Select source account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} ({formatCurrency(account.balance, currency)})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-[#7c9189] mb-1 block">To Account</label>
+                  <Select
+                    value={transferForm.toAccountId}
+                    onChange={(event) => setTransferForm({ ...transferForm, toAccountId: event.target.value })}
+                    required
+                  >
+                    <option value="">Select destination account</option>
+                    {accounts
+                      .filter((account) => account.id !== transferForm.fromAccountId)
+                      .map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name} ({formatCurrency(account.balance, currency)})
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs text-[#7c9189] mb-1 block">Amount</label>
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    placeholder="0.00"
+                    value={transferForm.amount}
+                    onChange={(event) => setTransferForm({ ...transferForm, amount: event.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#7c9189] mb-1 block">Date</label>
+                  <Input
+                    type="date"
+                    value={transferForm.date}
+                    onChange={(event) => setTransferForm({ ...transferForm, date: event.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <Input
+                placeholder="Notes (optional, e.g. Monthly savings contribution)"
+                value={transferForm.notes}
+                onChange={(event) => setTransferForm({ ...transferForm, notes: event.target.value })}
+              />
+              {transferError && (
+                <p className="text-sm text-rose-400 font-medium">{transferError}</p>
+              )}
+              <Button type="submit" disabled={isTransferring || accounts.length < 2} className="w-full">
+                {isTransferring ? "Transferring..." : "Transfer Funds"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
         {accounts.map((account) => (
           <Card key={account.id}>
@@ -663,6 +871,9 @@ export function FinanceShell() {
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>{account.name}</CardTitle>
                   <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => initiateTransferFromAccount(account.id)}>
+                      Transfer
+                    </Button>
                     <Button type="button" variant="ghost" onClick={() => startEditingAccount(account)}>
                       Edit
                     </Button>
