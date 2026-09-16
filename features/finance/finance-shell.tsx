@@ -2,7 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
-import { ArrowRightLeft, BriefcaseBusiness, CreditCard, Landmark, PiggyBank, Plus, Search, Wallet } from "lucide-react";
+import {
+  ArrowRightLeft,
+  BriefcaseBusiness,
+  Calendar,
+  ChevronUp,
+  CreditCard,
+  Download,
+  FileText,
+  Landmark,
+  PiggyBank,
+  Plus,
+  RotateCcw,
+  Search,
+  Wallet,
+  X,
+} from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +81,10 @@ export function FinanceShell() {
   const [accountForm, setAccountForm] = useState({ name: "", type: "Bank", balance: 0 });
   const [categoryForm, setCategoryForm] = useState({ name: "", type: "expense" as TransactionType });
   const [typeFilter, setTypeFilter] = useState<TransactionType | "all">("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [form, setForm] = useState(emptyTransactionForm);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
@@ -173,8 +192,75 @@ export function FinanceShell() {
     [transactions, accounts, selectedMonth, loans, investments]
   );
   const filteredTransactions = useMemo(() => {
-    return filterTransactionsBySearch(transactions, search, typeFilter);
-  }, [transactions, search, typeFilter]);
+    return filterTransactionsBySearch(transactions, search, typeFilter, startDate, endDate, accountFilter);
+  }, [transactions, search, typeFilter, startDate, endDate, accountFilter]);
+
+  const ledgerMetrics = useMemo(() => {
+    let totalInflow = 0;
+    let totalOutflow = 0;
+
+    for (const tx of filteredTransactions) {
+      if (tx.type === "transfer") {
+        if ((tx.charge ?? 0) > 0) {
+          totalOutflow += tx.charge ?? 0;
+        }
+      } else if (isPositiveFlow(tx.type)) {
+        if (tx.type === "loan_receive_repayment") {
+          totalInflow += tx.interestAmount ?? tx.amount;
+        } else {
+          totalInflow += tx.amount;
+        }
+      } else {
+        if (tx.type === "loan_repayment") {
+          totalOutflow += tx.interestAmount ?? tx.amount;
+        } else {
+          totalOutflow += tx.amount;
+        }
+      }
+    }
+
+    return {
+      count: filteredTransactions.length,
+      inflow: Math.round(totalInflow * 100) / 100,
+      outflow: Math.round(totalOutflow * 100) / 100,
+      net: Math.round((totalInflow - totalOutflow) * 100) / 100,
+    };
+  }, [filteredTransactions]);
+
+  const setQuickDateRange = (preset: "all" | "this_month" | "last_30_days" | "this_year") => {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+
+    if (preset === "all") {
+      setStartDate("");
+      setEndDate("");
+    } else if (preset === "this_month") {
+      const firstDay = `${todayStr.slice(0, 7)}-01`;
+      setStartDate(firstDay);
+      setEndDate(todayStr);
+    } else if (preset === "last_30_days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      setStartDate(thirtyDaysAgo.toISOString().slice(0, 10));
+      setEndDate(todayStr);
+    } else if (preset === "this_year") {
+      const firstDayOfYear = `${today.getFullYear()}-01-01`;
+      setStartDate(firstDayOfYear);
+      setEndDate(todayStr);
+    }
+  };
+
+  const hasActiveFilters = Boolean(
+    search || typeFilter !== "all" || startDate || endDate || accountFilter !== "all"
+  );
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setTypeFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setAccountFilter("all");
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -217,6 +303,7 @@ export function FinanceShell() {
     }
 
     setEditingTransactionId(null);
+    setIsAddTxOpen(false);
     setForm({ ...emptyTransactionForm, date: new Date().toISOString().slice(0, 10) });
   };
 
@@ -331,6 +418,7 @@ export function FinanceShell() {
 
   const startEditingTransaction = (transaction: Transaction) => {
     setEditingTransactionId(transaction.id);
+    setIsAddTxOpen(true);
     setForm({
       title: transaction.title,
       amount: transaction.amount,
@@ -346,6 +434,7 @@ export function FinanceShell() {
 
   const cancelEditingTransaction = () => {
     setEditingTransactionId(null);
+    setIsAddTxOpen(false);
     setForm({ ...emptyTransactionForm, date: new Date().toISOString().slice(0, 10) });
   };
 
@@ -583,6 +672,12 @@ export function FinanceShell() {
                             <span className="text-amber-400"> (Fee: {formatCurrency(transaction.charge, currency)})</span>
                           ) : null}
                         </p>
+                        {transaction.notes ? (
+                          <p className="mt-1 text-xs text-[#8ca39b] dark:text-[#7c9189] flex items-center gap-1.5">
+                            <FileText className="h-3 w-3 shrink-0 text-[#52796f]" />
+                            <span className="line-clamp-1">{transaction.notes}</span>
+                          </p>
+                        ) : null}
                       </div>
                       <div className="text-right">
                         <p className={isTransfer ? "font-semibold text-cyan-400" : positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
@@ -649,118 +744,567 @@ export function FinanceShell() {
 
   const renderTransactions = () => (
     <div className="space-y-6">
+      {/* 1. Header & Actions */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-100">Transaction Ledger</h2>
+          <p className="text-sm text-[#7c9189]">
+            Record, audit, and filter all account inflows, outflows, and transfers.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => downloadTransactionsCsv(filteredTransactions)}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              if (isAddTxOpen && editingTransactionId) {
+                cancelEditingTransaction();
+              } else {
+                setIsAddTxOpen((prev) => !prev);
+              }
+            }}
+            className="gap-2"
+          >
+            {isAddTxOpen ? (
+              <>
+                <ChevronUp className="h-4 w-4" /> Hide Form
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" /> Add Transaction
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. Ledger KPI Summary Strip */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#7c9189]">Transactions</p>
+          <p className="mt-1 text-2xl font-bold text-slate-100">{ledgerMetrics.count}</p>
+          <p className="text-xs text-[#52796f]">
+            {ledgerMetrics.count === transactions.length ? "All records" : `Filtered from ${transactions.length}`}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#7c9189]">Total Inflow</p>
+          <p className="mt-1 text-2xl font-bold text-[#3fe0a5]">+{formatCurrency(ledgerMetrics.inflow, currency)}</p>
+          <p className="text-xs text-[#52796f]">Credits & Income</p>
+        </div>
+        <div className="rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#7c9189]">Total Outflow</p>
+          <p className="mt-1 text-2xl font-bold text-[#F2545B]">-{formatCurrency(ledgerMetrics.outflow, currency)}</p>
+          <p className="text-xs text-[#52796f]">Expenses & Fees</p>
+        </div>
+        <div className="rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#7c9189]">Net Ledger Flow</p>
+          <p className={`mt-1 text-2xl font-bold ${ledgerMetrics.net >= 0 ? "text-[#3fe0a5]" : "text-[#F2545B]"}`}>
+            {ledgerMetrics.net >= 0 ? "+" : ""}{formatCurrency(ledgerMetrics.net, currency)}
+          </p>
+          <p className="text-xs text-[#52796f]">Inflow - Outflow</p>
+        </div>
+      </div>
+
+      {/* 3. Collapsible Add / Edit Transaction Form */}
+      {isAddTxOpen && (
+        <Card className="border-emerald-500/30 bg-[#12231e]/90 shadow-xl transition-all">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-lg">
+              {editingTransactionId ? "Edit Transaction" : "New Transaction Entry"}
+            </CardTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancelEditingTransaction}
+              className="h-8 w-8 p-0 text-[#7c9189] hover:text-slate-200"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Title / Description</label>
+                <Input
+                  placeholder="e.g. Grocery Store, Client Payment"
+                  value={form.title}
+                  onChange={(event) => setForm({ ...form, title: event.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Amount</label>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={form.amount}
+                  onChange={(event) => setForm({ ...form, amount: event.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Type</label>
+                <Select
+                  value={form.type}
+                  onChange={(event) => setForm({ ...form, type: event.target.value as TransactionType })}
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Date</label>
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={(event) => setForm({ ...form, date: event.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Category</label>
+                <Select
+                  value={form.categoryId}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      categoryId: event.target.value,
+                      category: categories.find((item) => item.id === event.target.value)?.name ?? "",
+                    })
+                  }
+                >
+                  <option value="">Select category</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#7c9189]">Account</label>
+                <Select
+                  value={form.accountId}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      accountId: event.target.value,
+                      account: accounts.find((item) => item.id === event.target.value)?.name ?? "",
+                    })
+                  }
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({formatCurrency(account.balance, currency)})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs text-[#7c9189]">Notes / Memo (optional)</label>
+                <Textarea
+                  placeholder="Add notes, tags, or details..."
+                  value={form.notes}
+                  onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                  className="h-10 min-h-[40px] resize-none"
+                />
+              </div>
+              <div className="flex gap-2 md:col-span-2 lg:col-span-4 justify-end pt-2">
+                {editingTransactionId ? (
+                  <Button type="button" variant="outline" onClick={cancelEditingTransaction}>
+                    Cancel
+                  </Button>
+                ) : (
+                  <Button type="button" variant="ghost" onClick={() => setIsAddTxOpen(false)}>
+                    Close
+                  </Button>
+                )}
+                <Button type="submit">
+                  {editingTransactionId ? "Update Transaction" : "Save Transaction"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 4. Filter & Date Range Toolbar */}
       <Card>
-        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle>Transactions</CardTitle>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <label className="flex items-center gap-2 rounded-xl border border-[#2f463f] bg-[#101b18]/70 px-3 py-2">
-              <Search className="h-4 w-4 text-[#7c9189]" />
+        <CardContent className="p-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-[#7c9189]" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search..."
-                className="border-0 bg-transparent p-0 shadow-none"
+                placeholder="Search title, notes, category..."
+                className="pl-9 pr-8"
               />
-            </label>
-            <select
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-2.5 text-[#7c9189] hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+
+            {/* Type Filter */}
+            <Select
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value as TransactionType | "all")}
-              className="rounded-xl border border-[#2f463f] bg-[#101b18] px-3 py-2 text-sm"
             >
-              <option value="all">All types</option>
+              <option value="all">All Types</option>
               <option value="income">Income</option>
               <option value="expense">Expenses</option>
+              <option value="transfer">Transfers</option>
               <option value="loan_borrow">Loan Borrow</option>
               <option value="loan_repayment">Loan Repayment</option>
               <option value="loan_lend">Loan Lend</option>
-              <option value="loan_receive_repayment">Loan Receive Repayment</option>
+              <option value="loan_receive_repayment">Loan Repaid</option>
               <option value="investment_in">Investment Deposit</option>
               <option value="investment_out">Investment Withdraw</option>
-              <option value="transfer">Transfer</option>
-            </select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="mb-6 grid gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:grid-cols-2 lg:grid-cols-4">
-            <Input placeholder="Title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
-            <Input
-              type="number"
-              step="any"
-              min="0.01"
-              placeholder="0.00"
-              value={form.amount}
-              onChange={(event) => setForm({ ...form, amount: event.target.value })}
-              required
-            />
-            <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TransactionType })}>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
             </Select>
-            <Input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
-            <Select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value, category: categories.find((item) => item.id === event.target.value)?.name ?? "" })}>
-              <option value="">Select category</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </Select>
-            <Select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value, account: accounts.find((item) => item.id === event.target.value)?.name ?? "" })}>
-              <option value="">Select account</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
-              ))}
-            </Select>
-            <Textarea placeholder="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="md:col-span-2 lg:col-span-3" />
-            <div className="flex gap-2 md:col-span-2 lg:col-span-1">
-              <Button type="submit" className="h-10 flex-1">{editingTransactionId ? "Save" : "Add transaction"}</Button>
-              {editingTransactionId ? (
-                <Button type="button" variant="outline" className="h-10" onClick={cancelEditingTransaction}>
-                  Cancel
-                </Button>
-              ) : null}
-            </div>
-          </form>
 
-          <div className="space-y-3">
-            {filteredTransactions.map((transaction) => {
-              const isTransfer = transaction.type === "transfer";
-              const positive = isPositiveFlow(transaction.type);
-              return (
-                <div key={transaction.id} className="flex flex-col gap-3 rounded-2xl border border-[#2f463f] bg-[#101b18]/70 p-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{transaction.title}</p>
-                      {renderTransactionBadge(transaction.type)}
-                    </div>
-                    <p className="text-sm text-[#7c9189]">
-                      {isTransfer && transaction.toAccount ? (
-                        <span className="font-medium text-[#a7b5af]">{transaction.account} ➔ {transaction.toAccount} • </span>
-                      ) : (
-                        <>
-                          {transaction.category ? `${transaction.category} • ` : ""}
-                          {transaction.account ? `${transaction.account} • ` : ""}
-                        </>
-                      )}
-                      {transaction.date}
-                      {isTransfer && transaction.charge && transaction.charge > 0 ? (
-                        <span className="text-amber-400 font-normal"> (Fee: {formatCurrency(transaction.charge, currency)})</span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <p className={isTransfer ? "font-semibold text-cyan-400" : positive ? "font-semibold text-[#3fe0a5]" : "font-semibold text-[#F2545B]"}>
-                      {isTransfer ? "" : positive ? "+" : "-"}{formatCurrency(transaction.amount, currency)}
-                    </p>
-                    <Button variant="ghost" type="button" onClick={() => startEditingTransaction(transaction)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" type="button" className="text-rose-400 hover:text-rose-300" onClick={() => removeTransaction(transaction.id)}>
-                      Remove
-                    </Button>
-                  </div>
+            {/* Account Filter */}
+            <Select
+              value={accountFilter}
+              onChange={(event) => setAccountFilter(event.target.value)}
+            >
+              <option value="all">All Accounts</option>
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
+            </Select>
+
+            {/* Reset Filters */}
+            <div className="flex items-center gap-2">
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearAllFilters}
+                  className="w-full gap-2 border-[#2f463f] text-[#7c9189] hover:text-slate-100 h-9 text-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Reset Filters
+                </Button>
+              ) : (
+                <div className="hidden lg:flex items-center text-xs text-[#52796f]">
+                  All active filters clear
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
+
+          {/* Date Range Filtering (From Date & To Date) */}
+          <div className="flex flex-col gap-3 pt-2 border-t border-[#23352f]/60 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-[#7c9189] flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-[#52796f]" /> From:
+                </span>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="h-9 w-40 text-xs"
+                  />
+                  {startDate && (
+                    <button
+                      type="button"
+                      onClick={() => setStartDate("")}
+                      className="absolute right-7 top-2.5 text-[#7c9189] hover:text-slate-200"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-[#7c9189] flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-[#52796f]" /> To:
+                </span>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="h-9 w-40 text-xs"
+                  />
+                  {endDate && (
+                    <button
+                      type="button"
+                      onClick={() => setEndDate("")}
+                      className="absolute right-7 top-2.5 text-[#7c9189] hover:text-slate-200"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Date Presets */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-[#7c9189] mr-1">Quick ranges:</span>
+              <button
+                type="button"
+                onClick={() => setQuickDateRange("this_month")}
+                className="rounded-lg border border-[#2f463f] bg-[#101b18] px-2.5 py-1 text-xs text-[#a7b5af] hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDateRange("last_30_days")}
+                className="rounded-lg border border-[#2f463f] bg-[#101b18] px-2.5 py-1 text-xs text-[#a7b5af] hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+              >
+                Last 30 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDateRange("this_year")}
+                className="rounded-lg border border-[#2f463f] bg-[#101b18] px-2.5 py-1 text-xs text-[#a7b5af] hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+              >
+                This Year
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDateRange("all")}
+                className="rounded-lg border border-[#2f463f] bg-[#101b18] px-2.5 py-1 text-xs text-[#a7b5af] hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+              >
+                All Time
+              </button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 5. Transactions Ledger Presentation */}
+      <Card>
+        <CardContent className="p-0 sm:p-2">
+          {filteredTransactions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <div className="rounded-full bg-[#1b2b25] p-4 text-[#52796f]">
+                <Search className="h-8 w-8" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-100">No transactions found</h3>
+              <p className="mt-1 max-w-sm text-sm text-[#7c9189]">
+                {hasActiveFilters
+                  ? "Try loosening your search terms or expanding your date range filters."
+                  : "No transactions have been recorded yet. Click '+ Add Transaction' above to begin."}
+              </p>
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearAllFilters}
+                  className="mt-4 gap-2 border-[#2f463f] h-9 text-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Clear All Filters
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Desktop Ledger Table (md: and up) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#23352f] text-xs font-semibold uppercase tracking-wider text-[#7c9189]">
+                      <th className="py-3.5 px-4">Date</th>
+                      <th className="py-3.5 px-4">Description & Notes</th>
+                      <th className="py-3.5 px-4">Type</th>
+                      <th className="py-3.5 px-4">Category / Route</th>
+                      <th className="py-3.5 px-4 text-right">Amount</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#23352f]/60 text-sm">
+                    {filteredTransactions.map((transaction) => {
+                      const isTransfer = transaction.type === "transfer";
+                      const positive = isPositiveFlow(transaction.type);
+                      return (
+                        <tr
+                          key={transaction.id}
+                          className="hover:bg-[#12231e]/50 transition-colors group"
+                        >
+                          <td className="py-3 px-4 font-mono text-xs text-[#a7b5af] whitespace-nowrap align-top">
+                            {transaction.date}
+                          </td>
+                          <td className="py-3 px-4 align-top max-w-xs lg:max-w-md">
+                            <p className="font-medium text-slate-100 leading-snug">
+                              {transaction.title}
+                            </p>
+                            {/* Notes incorporated on the bottom of each transaction in small text */}
+                            {transaction.notes ? (
+                              <p className="mt-1 text-xs text-[#8ca39b] dark:text-[#7c9189] flex items-start gap-1.5 leading-relaxed">
+                                <FileText className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#52796f]" />
+                                <span className="break-words">{transaction.notes}</span>
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="py-3 px-4 align-top whitespace-nowrap">
+                            {renderTransactionBadge(transaction.type)}
+                          </td>
+                          <td className="py-3 px-4 align-top whitespace-nowrap">
+                            {isTransfer && transaction.toAccount ? (
+                              <div>
+                                <span className="text-xs font-medium text-cyan-300">
+                                  {transaction.account} ➔ {transaction.toAccount}
+                                </span>
+                                {transaction.charge && transaction.charge > 0 ? (
+                                  <p className="text-xs text-amber-400/90 font-mono">
+                                    Fee: {formatCurrency(transaction.charge, currency)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="text-xs font-medium text-slate-200">
+                                  {transaction.category || "Uncategorized"}
+                                </p>
+                                <p className="text-xs text-[#7c9189]">{transaction.account}</p>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 align-top text-right whitespace-nowrap">
+                            <p
+                              className={
+                                isTransfer
+                                  ? "font-semibold text-cyan-400 font-mono"
+                                  : positive
+                                  ? "font-semibold text-[#3fe0a5] font-mono"
+                                  : "font-semibold text-[#F2545B] font-mono"
+                              }
+                            >
+                              {isTransfer ? "" : positive ? "+" : "-"}
+                              {formatCurrency(transaction.amount, currency)}
+                            </p>
+                          </td>
+                          <td className="py-3 px-4 align-top text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                type="button"
+                                className="h-8 px-2 text-xs text-[#7c9189] hover:text-slate-100"
+                                onClick={() => startEditingTransaction(transaction)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                type="button"
+                                className="h-8 px-2 text-xs text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10"
+                                onClick={() => removeTransaction(transaction.id)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Ledger Cards (< md) */}
+              <div className="block md:hidden divide-y divide-[#23352f]/60">
+                {filteredTransactions.map((transaction) => {
+                  const isTransfer = transaction.type === "transfer";
+                  const positive = isPositiveFlow(transaction.type);
+                  return (
+                    <div key={transaction.id} className="p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono text-[#7c9189]">{transaction.date}</span>
+                        {renderTransactionBadge(transaction.type)}
+                      </div>
+
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="font-medium text-slate-100">{transaction.title}</p>
+                        <p
+                          className={
+                            isTransfer
+                              ? "font-semibold text-cyan-400 font-mono text-base shrink-0"
+                              : positive
+                              ? "font-semibold text-[#3fe0a5] font-mono text-base shrink-0"
+                              : "font-semibold text-[#F2545B] font-mono text-base shrink-0"
+                          }
+                        >
+                          {isTransfer ? "" : positive ? "+" : "-"}
+                          {formatCurrency(transaction.amount, currency)}
+                        </p>
+                      </div>
+
+                      <div className="text-xs text-[#7c9189]">
+                        {isTransfer && transaction.toAccount ? (
+                          <span className="font-medium text-cyan-300">
+                            {transaction.account} ➔ {transaction.toAccount}
+                          </span>
+                        ) : (
+                          <span>
+                            {transaction.category ? `${transaction.category} • ` : ""}
+                            {transaction.account}
+                          </span>
+                        )}
+                        {isTransfer && transaction.charge && transaction.charge > 0 ? (
+                          <span className="text-amber-400 ml-2 font-mono">
+                            (Fee: {formatCurrency(transaction.charge, currency)})
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Notes incorporated on the bottom of each transaction in small text */}
+                      {transaction.notes ? (
+                        <div className="mt-2 pt-2 border-t border-[#23352f]/50 text-xs text-[#8ca39b] dark:text-[#7c9189] flex items-start gap-1.5">
+                          <FileText className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#52796f]" />
+                          <span className="break-words">{transaction.notes}</span>
+                        </div>
+                      ) : null}
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          className="h-7 text-xs text-[#7c9189] hover:text-slate-100"
+                          onClick={() => startEditingTransaction(transaction)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          className="h-7 text-xs text-rose-400 hover:text-rose-300"
+                          onClick={() => removeTransaction(transaction.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

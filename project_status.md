@@ -320,6 +320,15 @@ flowchart TD
 - [x] **UI Transfer Form & Quick Actions**: Added dedicated "Transfer between accounts" card in the Accounts tab with optional Charge / Fee input, live total deduction calculation preview, quick "Transfer" buttons on each account card and overview accounts list, and transfer filter option and cyan badge in Transactions.
 - [x] **Automated Test Suite**: Added `tests/transfers.test.ts` covering balance updates, charge deductions, rollback on deletion, constraints, search matching, and multi-tenant security.
 
+### Phase 7: Transaction Ledger Redesign, Date Range Filtering & Notes Display ✅ COMPLETED (2026-09-16)
+- [x] **Ledger Redesign**: Redesigned the transaction ledger with a high-density tabular presentation for desktop and responsive cards for mobile, featuring date, description, type badge, category/route, right-aligned amount, and quick action controls.
+- [x] **Ledger Summary Metrics Strip**: Added dynamic summary cards calculating total matching records, total inflow, total outflow, and net ledger flow for the active filter view.
+- [x] **Date Range Filtering (From & To Date)**: Implemented date pickers for `From Date` and `To Date` (`YYYY-MM-DD`) with clear calendar indicators and quick date range preset buttons (`This Month`, `Last 30 Days`, `This Year`, `All Time`).
+- [x] **Advanced Search & Account Filtering**: Enhanced `filterTransactionsBySearch` in `features/finance/data.ts` to search across title, category, account, destination account, and notes, plus an account filter dropdown and a one-click Reset Filters button.
+- [x] **Notes Display at Bottom of Transactions**: Displayed transaction notes at the bottom of each transaction in readable small text (`text-xs text-[#8ca39b]`) with `FileText` icons across the Transaction Ledger and Dashboard Recent Transactions.
+- [x] **Collapsible Add / Edit Form**: Added toggle button for the new transaction form (`+ Add Transaction` / `Hide Form`), automatically opening when an existing transaction is being edited.
+- [x] **Automated Test Suite**: Added unit tests in `features/finance/data.test.ts` verifying date range filtering, notes search, and account filtering. All 12 tests passing.
+
 ---
 
 ## 5. Quick Verification Checklist

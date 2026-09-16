@@ -54,6 +54,40 @@ test("filterTransactionsBySearch filters correctly by search query and type", ()
   assert.equal(filteredByType[0].id, "tx-1");
 });
 
+test("filterTransactionsBySearch filters correctly by date range, notes, and account", () => {
+  const transactions: Transaction[] = [
+    { id: "tx-1", title: "Sept Salary", amount: 5000, type: "income", category: "Salary", account: "IBBL", accountId: "acc-1", date: "2026-09-01", notes: "Direct company transfer" },
+    { id: "tx-2", title: "Groceries", amount: 200, type: "expense", category: "Food", account: "IBBL", accountId: "acc-1", date: "2026-09-05", notes: "Supermarket milk & bread" },
+    { id: "tx-3", title: "Tech Gadget", amount: 150, type: "expense", category: "Tech", account: "EBL", accountId: "acc-2", date: "2026-09-12", notes: "Mechanical keyboard switch" },
+    { id: "tx-4", title: "Transfer to EBL", amount: 1000, type: "transfer", account: "IBBL", accountId: "acc-1", toAccount: "EBL", toAccountId: "acc-2", date: "2026-09-14", notes: "Monthly savings deposit" },
+    { id: "tx-5", title: "Old Tx", amount: 50, type: "expense", category: "Snacks", account: "IBBL", accountId: "acc-1", date: "2026-08-15" },
+  ];
+
+  // 1. Date range filter: from 2026-09-01 to 2026-09-10
+  const dateRangeFiltered = filterTransactionsBySearch(transactions, "", "all", "2026-09-01", "2026-09-10");
+  assert.equal(dateRangeFiltered.length, 2);
+  assert.deepEqual(dateRangeFiltered.map((t) => t.id), ["tx-1", "tx-2"]);
+
+  // 2. Open-ended date filter: from 2026-09-12 onwards
+  const fromOnly = filterTransactionsBySearch(transactions, "", "all", "2026-09-12");
+  assert.equal(fromOnly.length, 2);
+  assert.deepEqual(fromOnly.map((t) => t.id), ["tx-3", "tx-4"]);
+
+  // 3. Search matching transaction notes
+  const notesMatch = filterTransactionsBySearch(transactions, "keyboard", "all");
+  assert.equal(notesMatch.length, 1);
+  assert.equal(notesMatch[0].id, "tx-3");
+
+  const notesMatchTransfer = filterTransactionsBySearch(transactions, "savings deposit", "all");
+  assert.equal(notesMatchTransfer.length, 1);
+  assert.equal(notesMatchTransfer[0].id, "tx-4");
+
+  // 4. Account filter: account acc-2 (matches tech gadget as source, transfer as destination)
+  const accountFiltered = filterTransactionsBySearch(transactions, "", "all", undefined, undefined, "acc-2");
+  assert.equal(accountFiltered.length, 2);
+  assert.deepEqual(accountFiltered.map((t) => t.id), ["tx-3", "tx-4"]);
+});
+
 test("buildDynamicMonthlyChart produces 6 trailing months aggregated accurately from transactions", () => {
   const { buildDynamicMonthlyChart } = require("./data");
   const transactions: Transaction[] = [

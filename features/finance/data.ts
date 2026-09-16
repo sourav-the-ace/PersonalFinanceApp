@@ -18,14 +18,29 @@ export function filterTransactionsBySearch(
   transactions: Transaction[],
   search: string,
   filter: TransactionType | "all",
+  startDate?: string,
+  endDate?: string,
+  accountId?: string,
 ) {
+  const query = search.trim().toLowerCase();
+
   return transactions.filter((transaction) => {
-    const matchesSearch = `${transaction.title} ${transaction.category} ${transaction.account} ${transaction.toAccount ?? ""}`
-      .toLowerCase()
-      .includes(search.toLowerCase());
+    const searchTarget = `${transaction.title} ${transaction.category ?? ""} ${transaction.account ?? ""} ${transaction.toAccount ?? ""} ${transaction.notes ?? ""}`
+      .toLowerCase();
+    const matchesSearch = !query || searchTarget.includes(query);
     const matchesFilter = filter === "all" || transaction.type === filter;
 
-    return matchesSearch && matchesFilter;
+    const txDate = transaction.date ? transaction.date.slice(0, 10) : "";
+    const matchesStartDate = !startDate || (txDate >= startDate);
+    const matchesEndDate = !endDate || (txDate <= endDate);
+
+    const matchesAccount =
+      !accountId ||
+      accountId === "all" ||
+      transaction.accountId === accountId ||
+      transaction.toAccountId === accountId;
+
+    return matchesSearch && matchesFilter && matchesStartDate && matchesEndDate && matchesAccount;
   });
 }
 
